@@ -1,0 +1,17 @@
+Arquitetura diferente do modelo  LLm da amalia que fosse desenhado automaticamente
+- Pouco uso de energia e etc e mais ou menos a mesma performance
+- DART
+- O que é que foi explorado para evoluir as LLMs e o que foi feito, para que tarefas, que tipos de problemas eles usam
+- Como é avaliado isto tudo, recurso que usam a avaliar (muito poder computacional ou nao, muito tempo ou nao)
+- Mamba, explorar o state-of-the-art (evoluçao, merging e etc), jeppa 
+- Model sheet, campos de cada paper e relevancia para a tese
+- Optimizar isto tudo para a Amalia
+- Scholar usar no google
+- open-review
+- não focar muito na parte evolucionária
+- 48 gigas de ram é o máximo
+- Docker
+
+- Deadline: fim de outubro para state-of-the-art máximo
+
+- Ler a conclusao, ver a introducao, ver se interessa -> mandar para a sheet e ler depois
