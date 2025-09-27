@@ -62,3 +62,66 @@ Other frameworks are presented in the paper. Explore if want to dive in into pro
 EC can effectively search the space of neural architectures by representing architectures as individuals, evaluating their
 performance (fitness), and applying evolutionary operators (selection, mutation, crossover) to generate and refine new candidate architectures iteratively. Table 8 presents a summary of evolutionary approaches for neural
 architectural search. BOA TABELA PARA MAIS STATE-OF-THE-ART WORKS.
+
+2.6 Future work and limitations
+Future research has numerous potential directions to address current limitations and unlock further possibilities, including efficiency improvements through more accurate, cheaper, and scalable surrogate models or
+training-free fitness evaluation techniques, as well as reducing the computational overhead of integrating LLMs
+into optimization. Scalability enhancements are needed to design EC and representations capable of handling
+larger search spaces from future LLM generations. Improved representations should explore sophisticated
+encodings for complex LLM architectures and hyperparameters to enhance evolutionary search.
+Automated algorithm design (AutoML/AutoAD) could extend EC and
+LLMs to self-improving optimization systems.
+Finally, the theory lags behind practice: little is known about sample complexity, convergence
+guarantees, or how an LLM’s “learning strategy” co-evolves with an EA’s “search strategy.”
+Addressing these EC-specific obstacles will require a mix of engineering and theory. Promising directions include fast, training-free fitness surrogates that widen feasible population sizes; geometry-aware mutation and
+crossover operators for continuous embeddings; legality-preserving encodings and grammar-guided search for
+ultra-large transformer variants; and hybrid schemes in which back-propagation performs local refinement
+while EC supplies global exploration. A firmer theoretical footing—for example, sample-efficiency bounds or
+criteria that predict when EC + LLM synergy outperforms either component alone—would guide algorithm
+design and resource allocation. Progress along these lines could make EC a practical, scalable tool for prompt
+and architecture optimisation in the next generation of LLMs.
+
+# https://arxiv.org/abs/2401.10510
+Thanks to their gradient-free nature, evolutionary algorithms (EAs) are employed to
+fine-tune LLMs in black-box scenarios, where they rely solely on forward propagation
+and do not require access to internal model gradients [15]. This makes EAs a practical
+choice for such settings.
+This paper draws conceptual analogies between the primary characteristics of LLMs and EAs, emphasizing their common mechanisms.
+
+#### Parallels
+
+Token representation can be regarded as an individual representation, which satisfies collective and uniqueness.
+EAs using token representations can operate directly within embedded or
+original token spaces to find high-quality input prompts
+
+Inspired by fitness shaping, the integration of sequence directionality
+into position encoding emerges as a noteworthy research direction
+
+Attention does not explicitly model
+token positions. Similarly, crossover inherently does not consider individual fitness.
+The attention and selection matrices play analogous roles: one determines token feature combinations, while the other governs parent genetic combinations. The attention
+matrix is parameterized based on token embeddings, while the selection matrix is
+heuristically built on individual relationships.
+
+Inspired
+by the directionality of fitness considered in selection, introducing token order directly
+into position embedding may enhance the generative capabilities of LLMs.
+
+From a macro perspective, the parallels between LLMs and EAs provide a conceptual framework that can inspire the development of artificial agents
+capable of learning from established knowledge while continuously exploring new
+knowledge
+
+This paper also shows a little the idea of co-evolution between EA and Transformers, where both can leave in a simbiotic way.
+
+![alt text](image-2.png)
+
+![alt text](image-1.png)
+
+![Paralels between EA and LLM](image.png)
+
+In contrast, evolutionary prompt tuning [15] and
+evolutionary self-tuning [77–81] primarily focus on modifying the model’s input to
+enhance performance on specific tasks, requiring access to no internal information.
+These evolutionary fine-tuning techniques in black-box scenarios are gaining attention
+for their low cost, as detailed in Tables 2 and 3.
+As shown in Fig. 4, evolutionary prompt tuning enhances model generation quality in few-shot or zero-shot settings by searching input prompts.
