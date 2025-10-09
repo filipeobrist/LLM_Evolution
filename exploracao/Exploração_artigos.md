@@ -136,3 +136,11 @@ The super-network is trained with weight sharing so all sub-networks reuse the s
 They experiment with different search spaces of varying granularity and different search strategies, finding that smaller, more constrained spaces actually work better under limited compute budgets. Surprisingly, a simple local search method outperformed more complex evolutionary algorithms. On GLUE tasks with BERT-base, they showed that the method can prune around 50% of parameters without accuracy loss.
 
 In conclusion, the approach demonstrates that structured pruning via NAS is an effective way to compress LLMs. It highlights the value of constrained search spaces, simple search strategies, and weight-sharing with distillation. Limitations include the need to fine-tune per task and the focus on encoder models, leaving autoregressive architectures and further compression methods like quantization for future work.
+
+
+# https://arxiv.org/abs/2408.01129
+
+In this survey, we therefore conduct an in-depth investigation of
+recent Mamba-associated studies, covering three main aspects: the advancements of Mamba-based models, the techniques of adapting
+Mamba to diverse data, and the applications where Mamba can excel. 
+
