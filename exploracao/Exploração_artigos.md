@@ -32,18 +32,23 @@ in different scenarios to enhance the model’s performance in cross-domain or c
 (i) Bidirectional Perspective on LLM–EC Synergy: This paper presents a comprehensive, two-way investigation of how LLMs can enhance EC through operator generation, tuning, and metaheuristic design,
 and how EC can improve LLMs via prompt engineering, architecture optimization, and hyperparameter
 tuning.
+
 (ii) Structured Taxonomy and Framework: We suggest a novel taxonomy that systematically categorizes
 methods, roles, and integration strategies, covering topics such as LLM-generated metaheuristics, surrogate modeling, co-evolutionary systems, and explainable EC, offering readers a unified framework to
 understand this emerging field.
+
 (iii) Survey of Emerging Co-Adaptive Paradigms: This work introduces and analyzes new co-adaptive paradigms
 where LLMs and EC evolve together, including co-evolutionary frameworks, human-in-the-loop systems, and pattern-guided evolutionary search, which are underexplored in previous surveys.
+
 (iv) Cross-Domain Application Landscape: We review and map the application of LLM-EC synergies across
 diverse domains such as scientific modeling, optimization, automated design, and decision-support systems, highlighting practical use cases and deployment insights.
+
 (v) Identification of Research Gaps and Future Challenges: The survey outlines unresolved challenges, such
 as scalability, explainability, and benchmark design, and provides a forward-looking research agenda to
 guide future interdisciplinary work in this field.
 
 2.1. EC in Prompt Engineering
+
 Unfortunately, crafting effective prompts usually demands substantial human effort, domain expertise, and
 iterative trial-and-error; 
 The integration of EC with prompt engineering has led to substantial advancements in optimizing LLMs.
@@ -56,14 +61,17 @@ subsequently selecting prompts based on improved development-set performance.
 Other frameworks are presented in the paper. Explore if want to dive in into prompt optimization
 
 2.5. Evolutionary Hyperparameter Tuning for LLMs
+
  Manually tuning these parameters is often a laborious, intuition-driven process. EC offers a compelling alternative (see Table 5 for some examples) for automating this process. Esta tabela é boa para ver exemplos de que estrategias EC foram usadas para que tarefas.
 
 2.5.1. Evolutionary Architecture Optimization for LLMs
+
 EC can effectively search the space of neural architectures by representing architectures as individuals, evaluating their
 performance (fitness), and applying evolutionary operators (selection, mutation, crossover) to generate and refine new candidate architectures iteratively. Table 8 presents a summary of evolutionary approaches for neural
 architectural search. BOA TABELA PARA MAIS STATE-OF-THE-ART WORKS.
 
 2.6 Future work and limitations
+
 Future research has numerous potential directions to address current limitations and unlock further possibilities, including efficiency improvements through more accurate, cheaper, and scalable surrogate models or
 training-free fitness evaluation techniques, as well as reducing the computational overhead of integrating LLMs
 into optimization. Scalability enhancements are needed to design EC and representations capable of handling
@@ -144,3 +152,75 @@ In this survey, we therefore conduct an in-depth investigation of
 recent Mamba-associated studies, covering three main aspects: the advancements of Mamba-based models, the techniques of adapting
 Mamba to diverse data, and the applications where Mamba can excel. 
 
+Transformers dominate AI but are limited by quadratic time complexity due to the attention mechanism.
+State Space Models (SSMs), inspired by control theory, efficiently capture long-range dependencies with linear complexity.
+Mamba combines SSMs’ efficiency with Transformers’ expressive modeling, making it suitable for long-sequence tasks in text, vision, and time series.
+
+What mamba introduces :
+
+HiPPO-based memory initialization for long-term dependencies.
+Selection mechanism that makes SSMs content-aware by adapting parameters to input.
+Hardware-aware computation (parallel associative scan + memory recomputation) for efficient GPU execution.
+Mamba offers a computationally efficient alternative to Transformers, maintaining strong modeling capacity with near-linear scalability.
+
+![alt text](image-3.png)
+
+Mamba, an emerging deep learning architecture, has demonstrated remarkable success across diverse domains, such
+as language generation, image classification, recommendation, and drug discovery, owing to its powerful modeling
+capabilities and computational efficiency.
+
+
+# https://arxiv.org/abs/2312.00752
+This is the oficial paper of the creators of Mamba. It explains how it works and all the theory behind, etc.
+![alt text](image-4.png)
+
+Transformers are powerful but limited by quadratic time and memory complexity due to self-attention
+
+Core ideas:
+
+1. Selectivity: Mamba allows the model to selectively retain or forget information based on the current input.
+
+- Achieved by making SSM parameters functions of the input.
+- Enables content-based reasoning (something previous SSMs lacked).
+
+2. Hardware-aware design:
+
+- The model is computed recurrently (not via convolutions).
+- Implements a parallel scan algorithm and memory recomputation to maximize GPU efficiency.
+- Achieves 5× faster inference and linear training complexity.
+
+3. Simplified Architecture:
+
+- Combines the SSM and MLP blocks into a single unified block → the Mamba block.
+- No attention, no separate MLPs.
+- Stacks these blocks homogeneously.
+
+Mamba achieves Transformer-level or superior performance across multiple domains:
+Language, DNA and audio modeling; syntetic tasks
+
+Mamba = Selectivity (Transformer-level reasoning) + State-space efficiency (linear time)
+It is a scalable, hardware-efficient backbone for foundation models across modalities — text, DNA, audio, and more.
+
+# https://arxiv.org/pdf/2405.21060
+This is the paper of the creators of Mamba-2. It formally introduces Mamba-2. I will just focus on what did they improved and whats diferent.
+
+1. Conceptual Shift: From Empirical SSM to Theoretical Duality
+- Mamba (2023): A Selective State Space Model (SSM) — an efficient RNN-like model using content-dependent parameters (A, B, C) to replace attention while maintaining linear complexity.
+- Mamba-2 (2024): Built on the new Structured State Space Duality (SSD) framework — proving that Transformers and SSMs are mathematically dual under structured matrix decompositions.
+
+In short: Mamba-1 was empirical and hardware-driven; Mamba-2 provides a unifying theoretical bridge linking SSMs and attention.
+
+2. Mamba-2 introduces the Structured State Space Duality (SSD) algorithm:
+
+Reinterprets SSMs as structured matrix multiplications on semiseparable matrices.
+
+Allows computation through a block-decomposed hybrid method combining linear (SSM) and quadratic (attention) paths.
+
+At sequence length 16K, Mamba-2 is 6× faster than softmax attention (FlashAttention-2 level performance) while retaining linear scalability.
+
+![alt text](image-5.png)
+
+Mamba-2 = Mamba + Duality + Hardware optimization.
+
+It mathematically unifies SSMs and attention, turning Mamba from an “efficient RNN-like alternative” into a theoretically grounded, hardware-optimized, and Transformer-compatible sequence model.
+Some parts of this papper I skipped for it was a deeper dive into mamba-2, wich i dont think its necessary for now
