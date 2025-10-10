@@ -218,9 +218,39 @@ Allows computation through a block-decomposed hybrid method combining linear (SS
 
 At sequence length 16K, Mamba-2 is 6× faster than softmax attention (FlashAttention-2 level performance) while retaining linear scalability.
 
-![alt text](image-5.png)
+| Aspect         | Mamba (v1)                   | Mamba-2                         |
+| -------------- | ---------------------------- | ------------------------------- |
+| Core mechanism | Selective SSM (recurrent)    | SSD: SSM ↔ Attention duality    |
+| Parallelism    | Custom GPU scan kernel       | Fully TP + SP compatible        |
+| Head design    | Single sequence stream       | Multi-head / grouped-value SSMs |
+| Efficiency     | ~5× faster than Transformers | **2–8× faster than Mamba**      |
+| Theory         | Empirical, RNN-style         | Formal duality with attention   |
+
 
 Mamba-2 = Mamba + Duality + Hardware optimization.
 
 It mathematically unifies SSMs and attention, turning Mamba from an “efficient RNN-like alternative” into a theoretically grounded, hardware-optimized, and Transformer-compatible sequence model.
-Some parts of this papper I skipped for it was a deeper dive into mamba-2, wich i dont think its necessary for now
+Some parts of this papper I skipped for it was a deeper dive into mamba-2, wich i dont think its necessary for now.
+
+
+# https://openreview.net/forum?id=C3t6GMPnC5
+The paper investigates whether Mamba, a new state-space model (SSM) that has outperformed Transformers on some benchmarks, can also perform downstream learning effectively — including:
+
+In-Context Learning (ICL)
+
+Mixed-Precision Fine-Tuning (MPFT)
+
+Parameter-Efficient Fine-Tuning (PEFT, e.g., LoRA)
+
+| Capability                     | Transformers     | Mamba (Pretrained)   | Mamba (Fine-tuned) |
+| ------------------------------ | ---------------- | -------------------- | ------------------ |
+| ICL improvement (vs zero-shot) | 100%             | 38%                  | **81.5%**          |
+| Training speed                 | Baseline         | +115% (2.15× faster) |                    |
+| Memory usage                   | Baseline         | −65.5% per token     |                    |
+| Precision stability            | FP16/BF16 stable | FP16/BF16 stable     |                    |
+
+Mamba’s recurrent structure is not fragile under mixed precision.
+
+When fine-tuned efficiently, Mamba SSMs can nearly match Transformer downstream performance.
+
+MPFT + PEFT make Mamba faster and more memory-efficient, opening the door to training larger models (≥7B params).
