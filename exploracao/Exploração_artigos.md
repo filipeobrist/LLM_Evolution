@@ -254,3 +254,45 @@ Mamba’s recurrent structure is not fragile under mixed precision.
 When fine-tuned efficiently, Mamba SSMs can nearly match Transformer downstream performance.
 
 MPFT + PEFT make Mamba faster and more memory-efficient, opening the door to training larger models (≥7B params).
+
+
+# https://arxiv.org/abs/2407.19832
+
+The paper introduces ML-Mamba, a multimodal large language model (MLLM) built on the Mamba-2 architecture — a state-space model (SSM) that scales linearly with sequence length.
+Unlike traditional Transformer-based MLLMs (which have quadratic complexity), ML-Mamba aims to achieve faster inference and reduced computation while maintaining strong multimodal understanding.
+
+1. Visual Encoder:
+- Combines DINOv2 and SigLIP to extract rich spatial and semantic image features.
+- This dual-encoder design balances detailed visual cues and high-level semantics.
+
+2. Multimodal Connector (MSC – Mamba-2 Scan Connector):
+- A novel connector that fuses visual and textual modalities using:
+    - Mamba-2 Visual Selective Scanning (MVSS): Applies 2D scanning to image features.
+    - SwiGLU Module: Improves nonlinear feature extraction.
+
+3. Mamba-2 Language Model:
+- Serves as the LLM backbone, replacing Transformers (e.g., LLaMA).
+- It models sequences efficiently via SSM dynamics.
+
+4. MLP Projector:
+- Maps processed visual embeddings into the language model’s input space.
+
+| Model               | Backbone    | Params   | VQAv2     | GQA       | TextVQA  | POPE     | VizWiz    | VSR      |
+| ------------------- | ----------- | -------- | --------- | --------- | -------- | -------- | --------- | -------- |
+| LLaVA-1.5 7B        | Vicuna      | 7B       | 78.5      | 62.0      | 58.2     | 85.9     | 50.0      | -        |
+| VL-Mamba            | Mamba       | 2.8B     | 76.6      | 56.2      | 48.9     | 84.4     | -         | -        |
+| **ML-Mamba (ours)** | **Mamba-2** | **2.7B** | **75.26** | **60.68** | **52.2** | **88.3** | **45.17** | **51.5** |
+
+| Model             | Tokens/s | Total Time (s) |
+| ----------------- | -------- | -------------- |
+| TinyLLaVA (Phi-2) | 38       | 6.45           |
+| MobileVLM v2      | 50       | 5.15           |
+| **ML-Mamba**      | **171**  | **1.47**       |
+
+
+ML-Mamba successfully applies the Mamba-2 State Space Model to multimodal learning, offering:
+- Comparable accuracy to Transformer-based models
+- Much faster inference
+- Fewer parameters and lower computational cost
+
+It highlights the potential of SSMs as a viable alternative to Transformers for large-scale multimodal AI.
