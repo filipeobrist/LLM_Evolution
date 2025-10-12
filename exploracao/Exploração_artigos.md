@@ -146,7 +146,7 @@ They experiment with different search spaces of varying granularity and differen
 In conclusion, the approach demonstrates that structured pruning via NAS is an effective way to compress LLMs. It highlights the value of constrained search spaces, simple search strategies, and weight-sharing with distillation. Limitations include the need to fine-tune per task and the focus on encoder models, leaving autoregressive architectures and further compression methods like quantization for future work.
 
 
-# https://arxiv.org/abs/2408.01129
+# https://arxiv.org/abs/2408.01129 - Mamba
 
 In this survey, we therefore conduct an in-depth investigation of
 recent Mamba-associated studies, covering three main aspects: the advancements of Mamba-based models, the techniques of adapting
@@ -170,7 +170,7 @@ as language generation, image classification, recommendation, and drug discovery
 capabilities and computational efficiency.
 
 
-# https://arxiv.org/abs/2312.00752
+# https://arxiv.org/abs/2312.00752 - Mamba
 This is the oficial paper of the creators of Mamba. It explains how it works and all the theory behind, etc.
 ![alt text](image-4.png)
 
@@ -201,7 +201,7 @@ Language, DNA and audio modeling; syntetic tasks
 Mamba = Selectivity (Transformer-level reasoning) + State-space efficiency (linear time)
 It is a scalable, hardware-efficient backbone for foundation models across modalities — text, DNA, audio, and more.
 
-# https://arxiv.org/pdf/2405.21060
+# https://arxiv.org/pdf/2405.21060 - Mamba-2
 This is the paper of the creators of Mamba-2. It formally introduces Mamba-2. I will just focus on what did they improved and whats diferent.
 
 1. Conceptual Shift: From Empirical SSM to Theoretical Duality
@@ -233,7 +233,7 @@ It mathematically unifies SSMs and attention, turning Mamba from an “efficient
 Some parts of this papper I skipped for it was a deeper dive into mamba-2, wich i dont think its necessary for now.
 
 
-# https://openreview.net/forum?id=C3t6GMPnC5
+# https://openreview.net/forum?id=C3t6GMPnC5 - Mamba
 The paper investigates whether Mamba, a new state-space model (SSM) that has outperformed Transformers on some benchmarks, can also perform downstream learning effectively — including:
 
 In-Context Learning (ICL)
@@ -256,7 +256,7 @@ When fine-tuned efficiently, Mamba SSMs can nearly match Transformer downstream 
 MPFT + PEFT make Mamba faster and more memory-efficient, opening the door to training larger models (≥7B params).
 
 
-# https://arxiv.org/abs/2407.19832
+# https://arxiv.org/abs/2407.19832 - ML-Mamba
 
 The paper introduces ML-Mamba, a multimodal large language model (MLLM) built on the Mamba-2 architecture — a state-space model (SSM) that scales linearly with sequence length.
 Unlike traditional Transformer-based MLLMs (which have quadratic complexity), ML-Mamba aims to achieve faster inference and reduced computation while maintaining strong multimodal understanding.
@@ -297,7 +297,7 @@ ML-Mamba successfully applies the Mamba-2 State Space Model to multimodal learni
 
 It highlights the potential of SSMs as a viable alternative to Transformers for large-scale multimodal AI.
 
-# https://ojs.aaai.org/index.php/AAAI/article/view/33131
+# https://ojs.aaai.org/index.php/AAAI/article/view/33131 - Cobra
 
 Cobra introduces a Transformer-free multi-modal large language model (MLLM) that leverages the Mamba state-space model (SSM) as its backbone to achieve:
 - Linear-time inference
@@ -353,3 +353,62 @@ Limitations
 - Needs more robust multimodal pretraining for unseen data.
 - Lightweight projector (LDPv2) trades accuracy for speed.
 - Future directions include quantization, low-memory optimization, and deployment on mobile or robotic systems.
+
+# https://arxiv.org/abs/2409.10594 - Kolmogorov–Arnold Transformer
+
+The Kolmogorov–Arnold Transformer (KAT) replaces the MLP layers in Transformers with Kolmogorov–Arnold Network (KAN) layers to create more expressive and efficient architectures.
+KAT introduces a new variant called Group-Rational KAN (GR-KAN), designed to solve scalability and computational challenges that made earlier KANs impractical for large-scale tasks like ImageNet.
+
+The authors address three major issues with KANs:
+
+
+| Challenge                          | Description                                                                    | Solution                                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **C1. Base Function Inefficiency** | B-spline functions in KANs are not GPU-friendly.                               | **S1. Rational Basis:** Replace B-splines with **rational functions**, implemented efficiently in CUDA.          |
+| **C2. Parameter Explosion**        | Each input-output pair has its own function, leading to huge parameter counts. | **S2. Group KAN:** Share activation parameters across groups of channels, drastically reducing computation.      |
+| **C3. Initialization Instability** | Poor weight initialization causes training divergence.                         | **S3. Variance-Preserving Initialization:** Maintain consistent activation variance across layers for stability. |
+
+These solutions produce the Group-Rational KAN (GR-KAN), which maintains expressiveness but with MLP-like efficiency.
+
+KAT keeps the Transformer’s attention blocks unchanged but replaces all MLP blocks with GR-KAN layers.
+It can also load pretrained ViT weights, allowing seamless fine-tuning from existing models.
+
+1. Image Classification
+
+| Model         | Params | FLOPs | Top-1 Acc.      | Gain |
+| ------------- | ------ | ----- | --------------- | ---- |
+| ViT-Tiny      | 5.7M   | 1.08G | 72.7            | —    |
+| **KAT-Tiny**  | 5.7M   | 1.13G | **74.6 (+1.9)** |      |
+| ViT-Small     | 22.1M  | 4.25G | 78.8            | —    |
+| **KAT-Small** | 22.1M  | 4.35G | **81.2 (+2.4)** |      |
+| ViT-Base      | 86.6M  | 16.9G | 79.1            | —    |
+| **KAT-Base**  | 86.6M  | 17.1G | **82.3 (+3.2)** |      |
+
+
+| Experiment                  | Finding                                                                   |
+| --------------------------- | ------------------------------------------------------------------------- |
+| **Activation Functions**    | KAT (learnable rational functions) achieves +1.9% accuracy over GELU.     |
+| **Rational Initialization** | “Identity–Swish” initialization yields best results.                      |
+| **CUDA Efficiency**         | Custom CUDA kernel for rational functions is 9× faster than B-splines.    |
+| **Throughput**              | Slightly slower than ReLU/GELU (~12% lower), but memory usage is similar. |
+
+
+GR-KAN — Efficient, GPU-optimized KAN variant.
+
+KAT — First scalable Transformer integrating KANs at ImageNet scale.
+
+Empirical success across classification, detection, and segmentation tasks.
+
+Limitations:
+- Rational functions are still slower than simple activations (e.g., GELU).
+- Potential gradient instability with higher-order rational functions.
+- Currently focused on vision tasks; extending to NLP remains future work.
+
+Future directions:
+- Explore alternative base functions (e.g., Fourier, Wavelet, Gaussian).
+- Apply KAT to language and reinforcement learning.
+- Investigate hybrid models that dynamically switch between MLP and KAN layers.
+- Optimize memory footprint and inference speed for deployment.
+
+Kolmogorov–Arnold Transformer (KAT) introduces a novel, scalable way to enhance Transformers by replacing MLPs with GPU-efficient, learnable Group-Rational KANs.
+It achieves higher accuracy with comparable compute, bridging the gap between theoretical expressiveness and practical scalability in deep learning.
