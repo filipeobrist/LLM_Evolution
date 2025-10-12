@@ -296,3 +296,60 @@ ML-Mamba successfully applies the Mamba-2 State Space Model to multimodal learni
 - Fewer parameters and lower computational cost
 
 It highlights the potential of SSMs as a viable alternative to Transformers for large-scale multimodal AI.
+
+# https://ojs.aaai.org/index.php/AAAI/article/view/33131
+
+Cobra introduces a Transformer-free multi-modal large language model (MLLM) that leverages the Mamba state-space model (SSM) as its backbone to achieve:
+- Linear-time inference
+- Low computational cost
+- Competitive multimodal understanding
+
+It replaces traditional Transformer-based LLMs (like LLaMA or Phi) with pre-trained Mamba models, aiming to maintain strong reasoning performance while drastically improving inference efficiency.
+
+1. Vision Encoder:
+- Combines DINOv2 and SigLIP features for complementary spatial and semantic representation.
+- Converts an image into patch tokens (e.g., 729 tokens for 384×384 images).
+
+2. Projector:
+- Maps visual embeddings into the same latent space as text tokens.
+- Implemented using either a multi-layer perceptron (MLP) or a lightweight downsample projector (LDPv2).
+
+3. Mamba LLM Backbone:
+- Based on Mamba-2.8B or Mamba-7B, trained autoregressively.
+- Provides linear computational complexity with constant memory usage, unlike Transformers’ quadratic scaling.
+
+4. Training Setup:
+- Fine-tuned on a 1.2M-sample multimodal dataset combining LLaVA v1.5, LVIS-Instruct-4V, and LRV-Instruct.
+- Trained for 2 epochs using AdamW optimizer, cosine learning rate decay, and mixed precision on 8×A100 GPUs.
+
+| Model                       | Params   | VQA-v2   | GQA      | VizWiz   | TextVQA  | VSR      | POPE     |
+| --------------------------- | -------- | -------- | -------- | -------- | -------- | -------- | -------- |
+| LLaVA v1.5 (7B)             | 7B       | 78.5     | 62.0     | 50.0     | 58.2     | 51.5     | 85.9     |
+| **Cobra-3.5B (Mamba-2.8B)** | **3.5B** | 77.8     | 62.3     | 49.7     | 58.2     | **58.4** | **88.4** |
+| **Cobra-8B (Mamba-7B)**     | **7.8B** | **79.2** | **63.9** | **56.2** | **59.5** | **62.9** | **87.6** |
+
+
+| Model          | Backbone       | Params   | Tokens/s  | Time (s) |
+| -------------- | -------------- | -------- | --------- | -------- |
+| MoE-LLaVA      | Phi-2          | 5.3B     | 20.3      | 12.6     |
+| LLaVA-Phi      | Phi-2          | 3.1B     | 40.9      | 6.3      |
+| MobileVLM v2   | MobileLLaMA    | 3.1B     | 49.5      | 5.2      |
+| **Cobra-3.5B** | **Mamba-2.8B** | **3.5B** | **166.5** | **1.5**  |
+
+3×–4× faster inference than the most optimized Transformer MLLMs.
+
+Maintains accuracy despite processing more visual tokens.
+
+Principal contributions:
+- Cobra — the first Mamba-based multimodal large language model, offering a Transformer-free alternative.
+- Linear scalability and constant memory inference, ideal for real-time and edge applications.
+- Enhanced reasoning and anti-hallucination via improved visual-textual fusion.
+- Demonstrates that state-space models (SSMs) can rival or outperform Transformers in multimodal AI.
+- 3–4× faster inference
+- Comparable or superior accuracy to LLaVA
+- Fewer parameters and lower computational cost
+
+Limitations
+- Needs more robust multimodal pretraining for unseen data.
+- Lightweight projector (LDPv2) trades accuracy for speed.
+- Future directions include quantization, low-memory optimization, and deployment on mobile or robotic systems.
