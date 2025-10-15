@@ -412,3 +412,38 @@ Future directions:
 
 Kolmogorov–Arnold Transformer (KAT) introduces a novel, scalable way to enhance Transformers by replacing MLPs with GPU-efficient, learnable Group-Rational KANs.
 It achieves higher accuracy with comparable compute, bridging the gap between theoretical expressiveness and practical scalability in deep learning.
+
+
+# https://proceedings.neurips.cc/paper_files/paper/2023/hash/3e53d82a1113e3d240059a9195668edc-Abstract-Conference.html - Evolutionary Neural Architecture Search for Transformer in Knowledge Tracing
+
+Task: 
+- The paper focuses on Knowledge Tracing (KT): predicting a student’s future performance (correct or incorrect) based on their past learning records. Essentially, it’s a sequence modeling task similar to language modeling, but for educational data (learning sequences).
+
+Performance:
+- The evolved Transformer models outperformed baseline KT models such as SAINT+ and DKT on multiple benchmark datasets.
+- Reported performance improvements were in AUC (Area Under Curve), RMSE and Accuracy metrics.
+- The results show that architectures found via EC (Evolutionary Computation) can surpass manually designed ones while using comparable or fewer parameters.
+
+Requirements (GPU,...): 
+- NVIDIA 3080 GPU
+
+What did they use: 
+- ENAS-KT (NAS approach for KT)
+
+Relevance of this paper:
+- it shows how Evolutionary Computation can automatically evolve Transformer architectures for a specific sequence modeling task.
+- Demonstrates that evolutionary NAS can yield task-specific optimized architectures that outperform human-designed ones.
+- provides insights into multi-objective optimization, which is useful if my goal is to balance accuracy vs. efficiency in summarization/classification LLMs.
+
+
+Small resume and important details I might use:
+- Introduces a multi-objective evolutionary NAS framework tailored to transformers.
+- Successfully applies it to sequence prediction (Knowledge Tracing), which conceptually aligns with summarization and classification (both sequence-to-sequence or sequence classification tasks).
+- They emphasize local-global fusion — an idea you might adapt by evolving architectures that balance global attention (context understanding for summarization) and local patterns (important for classification).
+- The parallelized EC setup (population evaluated on multiple GPUs) provides a good reference design for scaling evolutionary search on your LLM.
+- Strong precedent for demonstrating that EC can outperform manual transformer design even in constrained computational environments.
+
+
+Results:
+
+![alt text](image-6.png)
