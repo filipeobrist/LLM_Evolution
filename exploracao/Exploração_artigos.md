@@ -447,3 +447,41 @@ Small resume and important details I might use:
 Results:
 
 ![alt text](image-6.png)
+
+
+# https://proceedings.mlr.press/v97/so19a - The evolved transformer
+
+Task:
+- The paper’s goal is to automatically evolve better Transformer architectures for sequence modeling tasks such as language translation and language understanding Specifically, it aims to discover Transformer variants that outperform the original “Attention Is All You Need” model on benchmarks like WMT 2014 English→German translation.
+
+Performance:
+- The Evolved Transformer (ET) achieved BLEU = 29.8 on WMT’14 En→De, outperforming the baseline Transformer (BLEU = 28.4).
+- It also improved on WMT’14 En→Fr and other translation benchmarks.
+- ET became the state-of-the-art translation model at the time of publication, while maintaining similar or lower computational cost.
+- The improvements were validated across multiple datasets, showing the architecture’s generality.
+
+Requirements (GPU, etc.):
+- The experiments used Google’s TPUv2 clusters and the AutoML framework.
+- The evolutionary search process required thousands of candidate evaluations, each taking several GPU/TPU hours.
+- Population-level parallelism and early-stopping strategies were used to make the search feasible
+
+What did they use:
+- A regularized evolutionary algorithm (variant of the Aging Evolution / Tournament Selection method).
+- Population-based NAS where each candidate architecture is trained briefly, evaluated, and evolved via mutation.
+- Mutation operators: structural edits on Transformer blocks — e.g., convolutional replacements, layer reordering, attention head variations, feed-forward dimension changes.
+- “Aging” mechanism discards the oldest individuals, promoting exploration and diversity.
+- The search space included skip connections, attention variants, normalization positions, and feed-forward depth.
+
+Relevance of this paper:
+- One of the most relevant and foundational works for my project.
+- Demonstrates that evolutionary search can discover superior Transformer architectures for NLP tasks.
+- Serves as a direct precedent for applying EC to evolve LLM structures (layer design, routing, attention variations).
+- Introduced practical scaling strategies (aging, partial training, population culling) that can be replicated when evolving LLMs.
+- I specially liked how they saved computational cost by cutting training to the models who dont perform that good in the first x trainings
+
+Small resume and important details I might use:
+- The Evolved Transformer (ET) is an architecture discovered entirely through evolutionary search that outperformed the manually engineered Transformer.
+- ET’s architecture introduced branching within feed-forward blocks, depthwise separable convolutions, and more flexible attention modules — improving both expressivity and efficiency.
+- Demonstrates that evolutionary NAS is viable at Transformer scale, not just CNNs.
+- The paper’s aging evolution algorithm is simple, effective, and scalable — ideal for adapting to LLM evolution experiments.
+- Their early-stopping evaluation strategy (training each candidate only partially) can drastically reduce compute, which is highly relevant if evolving LLM architectures for summarization or classification tasks. I will definetly want to use this in my work.
