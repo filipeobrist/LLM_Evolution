@@ -503,3 +503,72 @@ Small resume and important details I might use:
 | **AutoRC**                                                                   |                                    RL-NAS for relation classification (task-specific BERT search).  | Relevant example of applying NAS to a BERT-style model for classification tasks (shows feasibility of task-targeted NAS).                                                       | Search space large (1.64×10⁸ unique architectures for RC task); uses RL controller → implies significant compute but targeted to specific downstream task datasets.                                                    | Searched BERT-RC model performs significantly better than classical BERT-based RC models (per survey).                                                                | Use **task-specific search spaces** (as AutoRC did for RC) to constrain search and reduce wasted exploration — directly applicable to summarization/classification.                                                                             |
 | **HAT (Hardware-Aware Transformers)**                                        |                                          Hardware-aware NAS (multi-objective: latency + accuracy).  | Highly relevant if you need deployable LLMs (CPU/GPU/embedded). HAT explicitly searches for hardware-efficient Transformer variants.                                            | Targets heterogeneous hardware (Raspberry Pi ARM CPU, Intel Xeon CPU, Nvidia TITAN Xp GPU) — search includes latency constraints on these platforms.                                                                   | HAT yields speedups on target hardware with small accuracy trade-offs (survey reports hardware-aware gains).                                                          | **Inject hardware cost into fitness/loss** (latency predictors or combined objective) so EC evolves models that meet device constraints — explicit recipe in the paper for hardware-aware evolution.                                            |
 | **NASViT**                                                                   |                           Hybrid attention-convolution search space (MBConv + Transformer blocks).  | Relevant if you want to hybridize conv/local operations with attention in LLM variants (may help local pattern modeling in summarization/classification).                       | Search space includes MBConv parameters and Transformer primitives; implies standard NAS compute but allows early conv layers to reduce compute on high-res inputs (vision emphasis).                                  | NASViT-style hybrid designs can be more efficient on certain tasks by using convs early and attention later (survey describes this conceptually).                     | **Hybrid search space** can reduce compute by shifting expensive attention to lower-resolution representations — analogous design for text could limit attention on long sequences.                                                             |
+
+
+Good suggestions from this survey (there are more):
+- Combine One-shot Super-net (AutoFormer/OFA) + Evolutionary Search — the survey explicitly describes this combination as an efficient workflow: train one supernet (weight-entanglement/entangled superweight) and use evolutionary search to select subnets.
+- Use progressive / budgeted evaluation (PDH / fixed small training budget) — Evolved Transformer and Primer used staged/limited training to reduce per-candidate cost. This is a concrete strategy the PDF recommends/illustrates.
+- Apply zero-cost proxies first (TF-TAS) to prune many bad candidates before expensive evaluation — the survey highlights TF-TAS (DSS) as a promising proxy for ViTs.
+- If hardware is a constraint, make the search hardware-aware (HAT) — include latency/target-device cost in the fitness/loss (the paper shows concrete formulations).
+
+# https://openreview.net/forum?id=9UExQpH078 - RZ-NAS: Enhancing LLM-guided Neural Architecture Search via Reflective Zero-Cost Strategy
+
+Task:
+
+To design an LLM-guided Neural Architecture Search (NAS) framework that uses reflection and zero-cost proxies to optimize architectures efficiently, reducing search time and compute while maintaining or improving performance.
+It focuses on automated architecture generation for image classification (CIFAR-10/100, ImageNet-16-120) and object detection (COCO), but the methodology generalizes to other tasks, including those relevant to LLMs (e.g., summarization/classification).
+
+Performance:
+
+- Outperforms all compared LLM-to-NAS and Zero-Cost NAS baselines (GPT-NAS, GENIUS, LLMatic, EvoPrompting, etc.).
+- On NAS-Bench-201:
+    - CIFAR-10 test = 94.24 %, CIFAR-100 = 73.30 %, ImageNet-16-120 = 46.24 % (test accuracy, Table 2 & 3).
+    - Correlation (Kendall τ) between Zero-Cost proxy and final accuracy improved (e.g., ZiCo 0.61 -> 0.63).
+- On DARTS search space: test error down to 2.41 % (CIFAR-10), outperforming Zen-NAS (2.55 %) and ZiCo (2.45 %).
+- On MobileNet search space / ImageNet:
+    - With 450 M FLOPs, achieves 79 % Top-1 accuracy, 62× faster search cost than DONNA (25 GPU days -> 0.4 GPU days).
+- On object detection (COCO): improves mAP while maintaining similar FLOPs compared with ResNet + MAE-DET (Fig. 4).
+
+Requirements:
+
+- Uses GPT-4o to generate mutations and reflections.
+- Tokens per run: 2 300–2 600 input / 150–200 output.
+- Search iterations: 1 500 iterations per proxy.
+- Population: 100 (CIFAR) to 256 (ImageNet/COCO).
+- Cost per proxy: ≈ $ 75 (0.03 GPU days) — far less than 1–40 GPU days of previous LLM-to-NAS methods.
+
+What they use:
+Evolutionary NAS framework (selection–mutation–reflection loop).
+LLM-guided mutation: LLM replaces random mutation using textual genotypes and code-level understanding.
+Reflection module: LLM reviews previous mutations, scores, and exceptions to propose improved architectures (“Generate -> Evaluate -> Reflect” loop).
+Zero-Cost evaluation: training-free proxies (GraSP, GradNorm, Synflow, ZenNAS, ZiCo) compute architecture fitness.
+Population-based search: dynamic population where worst architectures are removed each iteration.
+Structured prompting: combines system + in-context + user prompts with both text- and code-level descriptions.
+
+Relevance of this paper:
+
+Highly relevant to project — it integrates LLM reasoning with evolutionary NAS, enabling architecture evolution guided by textual feedback rather than black-box mutation.
+
+Key insights applicable to evolving Transformer-based LLMs:
+
+- Combine Zero-Cost evaluation + LLM reflection for low-compute architecture optimization.
+- Use prompt templates with code-level context to guide model changes intelligently.
+- Introduce reflection-driven EC loops for improved stability and performance.
+- Demonstrates scalability from micro (cell-based) to macro (network-level) search spaces.
+
+Small Resume and Important Details I Might Use:
+
+Concept: RZ-NAS = LLM-guided evolutionary NAS with reflection and training-free evaluation.
+
+Pipeline: Initialize → LLM-guided mutation → validate → compute Zero-Cost score → reflect → update population.
+
+Innovation:
+- Introduces Reflective Zero-Cost strategy → LLM reflection replaces part of fitness evaluation.
+- Text + code understanding → bridges semantic and structural architecture reasoning.
+- Random selection of mutation targets (not top-scoring ones) → maintains population diversity.
+- Prompt robustness: tested across phrasings → minor effect on results (Table 7).
+- Extremely low compute vs traditional NAS (0.03 GPU days vs > 1 GPU day).
+
+Outcome: State-of-the-art performance across NAS benchmarks with minimal compute, showcasing the potential for LLM-driven, reflective EC frameworks to optimize architectures efficiently.
+
+Note: Try to run and understand the code.
