@@ -572,3 +572,125 @@ Innovation:
 Outcome: State-of-the-art performance across NAS benchmarks with minimal compute, showcasing the potential for LLM-driven, reflective EC frameworks to optimize architectures efficiently.
 
 Note: Try to run and understand the code.
+
+# https://proceedings.mlr.press/v70/real17a.html - Large-Scale Evolution of Image Classifiers
+
+Task:
+
+They evolve CNN architectures for image classification on CIFAR-10 and CIFAR-100 datasets.
+The goal is to show that neuroevolution, when scaled massively, can rival or exceed hand-designed architectures.
+
+Performance:
+
+CIFAR-10:
+- Best evolved model achieved 94.6% test accuracy,
+- Ensemble of top models reached 95.6%,
+- Mean accuracy across runs: 94.1% ± 0.4%,
+- Total compute per experiment: ~9 × 10¹⁹ FLOPs.
+
+CIFAR-100:
+- 77.0% accuracy using 2 × 10²⁰ FLOPs.
+
+These results were competitive with hand-designed networks (e.g., ResNet 93.4%, Wide-ResNet 96.0%, DenseNet 96.7%).
+
+Outperformed all prior automated discovery methods (RL-based, Bayesian, Q-learning NAS) that started from fixed or constrained architectures.
+
+Requirements:
+
+- Required massive distributed computation.
+
+    - Population: 1,000 individuals
+
+    - Workers: 250 (each ¼ of population size)
+
+    - Each worker trained one model asynchronously.
+
+- Each individual trained for 25,600 SGD steps.
+
+- Parallel infrastructure: lock-free, file-system–based coordination.
+
+- Training done using TensorFlow on Google’s distributed compute infrastructure (TPUs/GPUs not explicitly specified but implied).
+
+- Compute scale: up to 4 × 10²⁰ FLOPs across five runs.
+
+- Despite high compute, once evolution begins, no human tuning is needed.
+- Overall, probably too much of compute cost.
+
+What they use:
+
+- Type: Simple large-scale evolutionary algorithm (tournament selection).
+
+- Encoding: Direct graph-based DNA representing the neural network topology.
+
+- Selection: Pairwise tournament — worst of two individuals is killed, best reproduces.
+
+- Mutation operators:
+
+    - Structural mutations: insert/remove convolution, add/remove skip connection, alter stride, filter size, number of channels.
+
+    - Training mutations: alter learning rate, reset weights, identity (continue training).
+
+- Recombination: explored but found not beneficial in this study.
+
+- Weight inheritance: children inherit parent weights where compatible — crucial for speeding up convergence.
+
+- Initialization: all individuals start as 1-layer, no-convolution models — evolution must build complexity from scratch.
+
+Relevance of the paper:
+- Establishes that simple evolutionary strategies can yield competitive architectures when scaled.
+- Introduces weight inheritance, which canbe adapted for Transformer fine-tuning.
+- Demonstrates that structural mutation operators (like add/remove skip connections or layers) effectively explore architecture space.
+- Provides insights into population dynamics, local optima, and compute trade-offs: vital for designing EC for LLMs.
+- Overall, a good reading, but not as relevant as other papers
+
+
+# https://ojs.aaai.org/index.php/AAAI/article/view/4405 - Regularized Evolution for Image Classifier Architecture Search
+
+Task:
+
+To evolve image classifier architectures automatically using an evolutionary algorithm that improves on previous methods by introducing a regularization mechanism (“aging evolution”).
+The objective: produce architectures that match or exceed human-designed and reinforcement learning–discovered models on CIFAR-10 and ImageNet, while using a simpler and faster search process.
+
+Performance:
+
+CIFAR-10:
+- AmoebaNet-A (N=6, F=32): 3.40% ± 0.08 test error (2.6M parameters)
+- AmoebaNet-A (N=6, F=36): 3.34% ± 0.06 test error (3.2M parameters)
+- Matches or slightly outperforms NASNet-A (3.41%) with fewer parameters.
+
+ImageNet:
+- AmoebaNet-A (N=6, F=190): 82.8% top-1 / 96.1% top-5 accuracy, comparable to NASNet-A.
+- AmoebaNet-A (N=6, F=448): 83.9% top-1 / 96.6% top-5, new state-of-the-art at the time.
+
+Search efficiency:
+- Evolution achieved higher early-stage accuracy than RL and random search, reaching competitive results faster, a major benefit in compute-constrained settings.
+
+Requirements:
+- Hardware: ~450 NVIDIA K40 GPUs. ... Not happening
+- Compute: ~7 days per experiment (≈20,000 models trained).
+
+- Training setup:
+    - Each model trained 25 epochs during search phase (N=3, F=24).
+    - Final training: 600 epochs, batch size 128, SGD with momentum 0.9.
+
+- Parallelization: asynchronous, distributed execution (each worker trains independently).
+
+- Population parameters:
+    - Population size P=100, sample size S=25.
+    - Mutation probability for “identity” = 0.05.
+    - Each child inherits architecture but retrains from scratch.
+
+What they use:
+
+Aging (Regularized) Evolution, a variant of tournament selection.
+Each model has an age (creation time).
+Instead of removing the worst model, the oldest model in the population is discarded each cycle.
+Encourages diversity and regularization, preventing overfitting to lucky high-performers.
+They only use mutation and selection, no crossover.
+
+Relevance of the paper:
+- Introduces aging regularization, which could be adapted for evolving Transformer/LLM architectures: it keeps search diverse and avoids premature convergence. An idea.
+- Demonstrates that simple mutation-based EC algorithms can reach state-of-the-art accuracy when run at scale.
+- The concept of age-based regularization could translate to LLM evolution as a way to retain exploration and improve retrainability of candidate models.
+
+
