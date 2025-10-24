@@ -223,7 +223,7 @@ At sequence length 16K, Mamba-2 is 6× faster than softmax attention (FlashAtten
 | Core mechanism | Selective SSM (recurrent)    | SSD: SSM ↔ Attention duality    |
 | Parallelism    | Custom GPU scan kernel       | Fully TP + SP compatible        |
 | Head design    | Single sequence stream       | Multi-head / grouped-value SSMs |
-| Efficiency     | ~5× faster than Transformers | **2–8× faster than Mamba**      |
+| Efficiency     | ~5× faster than Transformers | 2–8× faster than Mamba      |
 | Theory         | Empirical, RNN-style         | Formal duality with attention   |
 
 
@@ -244,7 +244,7 @@ Parameter-Efficient Fine-Tuning (PEFT, e.g., LoRA)
 
 | Capability                     | Transformers     | Mamba (Pretrained)   | Mamba (Fine-tuned) |
 | ------------------------------ | ---------------- | -------------------- | ------------------ |
-| ICL improvement (vs zero-shot) | 100%             | 38%                  | **81.5%**          |
+| ICL improvement (vs zero-shot) | 100%             | 38%                  | 81.5%          |
 | Training speed                 | Baseline         | +115% (2.15× faster) |                    |
 | Memory usage                   | Baseline         | −65.5% per token     |                    |
 | Precision stability            | FP16/BF16 stable | FP16/BF16 stable     |                    |
@@ -281,13 +281,13 @@ Unlike traditional Transformer-based MLLMs (which have quadratic complexity), ML
 | ------------------- | ----------- | -------- | --------- | --------- | -------- | -------- | --------- | -------- |
 | LLaVA-1.5 7B        | Vicuna      | 7B       | 78.5      | 62.0      | 58.2     | 85.9     | 50.0      | -        |
 | VL-Mamba            | Mamba       | 2.8B     | 76.6      | 56.2      | 48.9     | 84.4     | -         | -        |
-| **ML-Mamba (ours)** | **Mamba-2** | **2.7B** | **75.26** | **60.68** | **52.2** | **88.3** | **45.17** | **51.5** |
+| ML-Mamba (ours) | Mamba-2 | 2.7B | 75.26 | 60.68 | 52.2 | 88.3 | 45.17 | 51.5 |
 
 | Model             | Tokens/s | Total Time (s) |
 | ----------------- | -------- | -------------- |
 | TinyLLaVA (Phi-2) | 38       | 6.45           |
 | MobileVLM v2      | 50       | 5.15           |
-| **ML-Mamba**      | **171**  | **1.47**       |
+| ML-Mamba      | 171  | 1.47       |
 
 
 ML-Mamba successfully applies the Mamba-2 State Space Model to multimodal learning, offering:
@@ -325,8 +325,8 @@ It replaces traditional Transformer-based LLMs (like LLaMA or Phi) with pre-trai
 | Model                       | Params   | VQA-v2   | GQA      | VizWiz   | TextVQA  | VSR      | POPE     |
 | --------------------------- | -------- | -------- | -------- | -------- | -------- | -------- | -------- |
 | LLaVA v1.5 (7B)             | 7B       | 78.5     | 62.0     | 50.0     | 58.2     | 51.5     | 85.9     |
-| **Cobra-3.5B (Mamba-2.8B)** | **3.5B** | 77.8     | 62.3     | 49.7     | 58.2     | **58.4** | **88.4** |
-| **Cobra-8B (Mamba-7B)**     | **7.8B** | **79.2** | **63.9** | **56.2** | **59.5** | **62.9** | **87.6** |
+| Cobra-3.5B (Mamba-2.8B) | 3.5B | 77.8     | 62.3     | 49.7     | 58.2     | 58.4 | 88.4 |
+| Cobra-8B (Mamba-7B)     | 7.8B | 79.2 | 63.9 | 56.2 | 59.5 | 62.9 | 87.6 |
 
 
 | Model          | Backbone       | Params   | Tokens/s  | Time (s) |
@@ -334,7 +334,7 @@ It replaces traditional Transformer-based LLMs (like LLaMA or Phi) with pre-trai
 | MoE-LLaVA      | Phi-2          | 5.3B     | 20.3      | 12.6     |
 | LLaVA-Phi      | Phi-2          | 3.1B     | 40.9      | 6.3      |
 | MobileVLM v2   | MobileLLaMA    | 3.1B     | 49.5      | 5.2      |
-| **Cobra-3.5B** | **Mamba-2.8B** | **3.5B** | **166.5** | **1.5**  |
+| Cobra-3.5B | Mamba-2.8B | 3.5B | 166.5 | 1.5  |
 
 3×–4× faster inference than the most optimized Transformer MLLMs.
 
@@ -364,9 +364,9 @@ The authors address three major issues with KANs:
 
 | Challenge                          | Description                                                                    | Solution                                                                                                         |
 | ---------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| **C1. Base Function Inefficiency** | B-spline functions in KANs are not GPU-friendly.                               | **S1. Rational Basis:** Replace B-splines with **rational functions**, implemented efficiently in CUDA.          |
-| **C2. Parameter Explosion**        | Each input-output pair has its own function, leading to huge parameter counts. | **S2. Group KAN:** Share activation parameters across groups of channels, drastically reducing computation.      |
-| **C3. Initialization Instability** | Poor weight initialization causes training divergence.                         | **S3. Variance-Preserving Initialization:** Maintain consistent activation variance across layers for stability. |
+| C1. Base Function Inefficiency | B-spline functions in KANs are not GPU-friendly.                               | S1. Rational Basis: Replace B-splines with rational functions, implemented efficiently in CUDA.          |
+| C2. Parameter Explosion        | Each input-output pair has its own function, leading to huge parameter counts. | S2. Group KAN: Share activation parameters across groups of channels, drastically reducing computation.      |
+| C3. Initialization Instability | Poor weight initialization causes training divergence.                         | S3. Variance-Preserving Initialization: Maintain consistent activation variance across layers for stability. |
 
 These solutions produce the Group-Rational KAN (GR-KAN), which maintains expressiveness but with MLP-like efficiency.
 
@@ -378,19 +378,19 @@ It can also load pretrained ViT weights, allowing seamless fine-tuning from exis
 | Model         | Params | FLOPs | Top-1 Acc.      | Gain |
 | ------------- | ------ | ----- | --------------- | ---- |
 | ViT-Tiny      | 5.7M   | 1.08G | 72.7            | —    |
-| **KAT-Tiny**  | 5.7M   | 1.13G | **74.6 (+1.9)** |      |
+| KAT-Tiny  | 5.7M   | 1.13G | 74.6 (+1.9) |      |
 | ViT-Small     | 22.1M  | 4.25G | 78.8            | —    |
-| **KAT-Small** | 22.1M  | 4.35G | **81.2 (+2.4)** |      |
+| KAT-Small | 22.1M  | 4.35G | 81.2 (+2.4) |      |
 | ViT-Base      | 86.6M  | 16.9G | 79.1            | —    |
-| **KAT-Base**  | 86.6M  | 17.1G | **82.3 (+3.2)** |      |
+| KAT-Base  | 86.6M  | 17.1G | 82.3 (+3.2) |      |
 
 
 | Experiment                  | Finding                                                                   |
 | --------------------------- | ------------------------------------------------------------------------- |
-| **Activation Functions**    | KAT (learnable rational functions) achieves +1.9% accuracy over GELU.     |
-| **Rational Initialization** | “Identity–Swish” initialization yields best results.                      |
-| **CUDA Efficiency**         | Custom CUDA kernel for rational functions is 9× faster than B-splines.    |
-| **Throughput**              | Slightly slower than ReLU/GELU (~12% lower), but memory usage is similar. |
+| Activation Functions    | KAT (learnable rational functions) achieves +1.9% accuracy over GELU.     |
+| Rational Initialization | “Identity–Swish” initialization yields best results.                      |
+| CUDA Efficiency         | Custom CUDA kernel for rational functions is 9× faster than B-splines.    |
+| Throughput              | Slightly slower than ReLU/GELU (~12% lower), but memory usage is similar. |
 
 
 GR-KAN — Efficient, GPU-optimized KAN variant.
@@ -416,10 +416,10 @@ It achieves higher accuracy with comparable compute, bridging the gap between th
 
 # https://proceedings.neurips.cc/paper_files/paper/2023/hash/3e53d82a1113e3d240059a9195668edc-Abstract-Conference.html - Evolutionary Neural Architecture Search for Transformer in Knowledge Tracing
 
-Task: 
+### Task: 
 - The paper focuses on Knowledge Tracing (KT): predicting a student’s future performance (correct or incorrect) based on their past learning records. Essentially, it’s a sequence modeling task similar to language modeling, but for educational data (learning sequences).
 
-Performance:
+### Performance:
 - The evolved Transformer models outperformed baseline KT models such as SAINT+ and DKT on multiple benchmark datasets.
 - Reported performance improvements were in AUC (Area Under Curve), RMSE and Accuracy metrics.
 - The results show that architectures found via EC (Evolutionary Computation) can surpass manually designed ones while using comparable or fewer parameters.
@@ -430,7 +430,7 @@ Requirements (GPU,...):
 What did they use: 
 - ENAS-KT (NAS approach for KT)
 
-Relevance of this paper:
+### Relevance of the paper:
 - it shows how Evolutionary Computation can automatically evolve Transformer architectures for a specific sequence modeling task.
 - Demonstrates that evolutionary NAS can yield task-specific optimized architectures that outperform human-designed ones.
 - provides insights into multi-objective optimization, which is useful if my goal is to balance accuracy vs. efficiency in summarization/classification LLMs.
@@ -451,10 +451,10 @@ Results:
 
 # https://proceedings.mlr.press/v97/so19a - The evolved transformer
 
-Task:
+### Task:
 - The paper’s goal is to automatically evolve better Transformer architectures for sequence modeling tasks such as language translation and language understanding Specifically, it aims to discover Transformer variants that outperform the original “Attention Is All You Need” model on benchmarks like WMT 2014 English→German translation.
 
-Performance:
+### Performance:
 - The Evolved Transformer (ET) achieved BLEU = 29.8 on WMT’14 En→De, outperforming the baseline Transformer (BLEU = 28.4).
 - It also improved on WMT’14 En→Fr and other translation benchmarks.
 - ET became the state-of-the-art translation model at the time of publication, while maintaining similar or lower computational cost.
@@ -472,7 +472,7 @@ What did they use:
 - “Aging” mechanism discards the oldest individuals, promoting exploration and diversity.
 - The search space included skip connections, attention variants, normalization positions, and feed-forward depth.
 
-Relevance of this paper:
+### Relevance of the paper:
 - One of the most relevant and foundational works for my project.
 - Demonstrates that evolutionary search can discover superior Transformer architectures for NLP tasks.
 - Serves as a direct precedent for applying EC to evolve LLM structures (layer design, routing, attention variations).
@@ -490,19 +490,19 @@ Small resume and important details I might use:
 
 | NAS Method | Type  | Relevance to project | Requirements (GPU, etc) | Performance | Cost-reduction / efficiency details |
 | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Evolved Transformer**                                                      |                                          Evolutionary NAS (cell-based, aging/progressive schemes).  | Direct precedent: evolves Transformer cells for sequence tasks (e.g., MT). Highly relevant as an EC → Transformer example.                                                      | Search runs at large scale: examples used TPU v2 chips; authors ran searches with many workers (search configs used 200 workers with 1 TPU V.2 each in some setups).                                                   | Outperformed Transformer on WMT benchmarks; matched baseline with ~78% parameters or better; achieved new SOTA BLEU on WMT’14 En→De (BLEU 29.8).                      | **Progressive Dynamic Hurdles (PDH)** — allocate more training to promising children; **warm-start / seeding** with known strong models; partial/short training of candidates (reduces full-train cost).                                        |
-| **Primer (search described in paper)**                                       |                                     Evolutionary-style search (mutations over ~25k architectures).  | Relevant — applies evolutionary search for language modeling (e.g., LM1B). Shows convolution+attention hybrids that may help classification/summarization.                      | Search constrained by a fixed compute budget example: search budget cited as **24 TPU-v2 hours** for experiments.                                                                                                      | Primer architecture matched Vanilla Transformer performance while using **~4.2× less compute time** on the language modelling task (per the survey).                  | Uses **depthwise conv inside attention heads (MDHA)** and evolutionary search with a fixed training budget — practical pattern for reducing search cost by constraining per-candidate training time.                                            |
-| **DARTSformer**                                                              |                            Differentiable / One-shot NAS adaptation (DARTS + Reversible Networks).  | Relevant to gradient-based (faster) search in Transformer spaces; useful hybrid option when EC is expensive.                                                           | Designed to **reduce memory** via reversible networks so Supernetwork fits larger hidden sizes (reduces GPU memory requirement). (Paper motivation is explicitly memory reduction.)                                    | Searched networks perform better than Vanilla Transformer and comparable to large Evolved Transformer at **significantly lower search cost** (per survey summary).    | **Reversible networks** reduce memory footprint of the Supernet, enabling DARTS-style search for transformers with larger hidden sizes (a concrete way to lower resource needs).                                                                |
-| **AutoTrans**                                                                |                                ENAS-style / RL + weight-sharing for end-to-end Transformer design.  | Directly searches Transformer hyperparameters (heads, depth, activations, layer-norm choices) — highly relevant to architecture-level evolution for LLM tasks.                  | Search performed directly on translation benchmarks (Multi-30K, WMT-14 En-De, CoNLL2003) — implies non-trivial GPU/TPU compute but the method is ENAS-style (weight sharing reduces cost vs full-train per-candidate). | AutoTrans-searched models produced better BLEU than manually designed networks across datasets (per survey).                                                          | Uses **ENAS (parameter sharing)** to avoid full training per candidate → concrete cost-saving approach I could adapt for summarization/classification.                                                                                          |
-| **TextNAS**                                                                  |                                 ENAS-style (ENAS + mixed ops: conv, pooling, RNN, self-attention).  | Relevant for text classification / NLI — search mixes conv/RNN/attention blocks (flexible for classification tasks).                                                            | Uses ENAS weight-sharing (so lower compute compared to training each child). Experiments on SST and other text datasets.                                                                                               | Searched TextNAS models outperformed previous conv-only searched models on multiple classification datasets (reported in survey).                                     | **ENAS weight sharing** and multi-path macro-space let the method explore diverse layer types without training from scratch — a practical approach for my classifier/summarizer search space.                                                 |
-| **AutoFormer**                                                               |                                 One-shot / Super-Net + Evolutionary search (Transformer-specific).  | Very relevant — AutoFormer is Transformer-specific One-shot NAS; directly applicable to evolving Transformer components for LLMs.                                               | Supernetwork trained once; memory reduced via **weight entanglement** (superweight of highest dimension) — lowers memory/compute compared to naive supernets. Article reports evaluated models (tiny/small/base).          | AutoFormer-tiny/small/base achieved **74.7% / 81.7% / 82.4%** on ImageNet with 5.7M/22.9M/53.7M params (outperforming ViT/DeiT and EfficientNet baselines in survey). | **Weight-entanglement (superweight)** → only one forward/backward pass needed; combined with evolutionary search on subnets after training the supernet (gives efficient subnet evaluation). This is directly cited as an efficiency technique. |
-| **ViTAS**                                                                    |                       Evolutionary search on ViT search spaces (cyclic weight-sharing for tokens).  | Relevant: ViTAS adapts self-attention search elements (heads, patch size, MLP dims) and uses EC for budgeted search — concepts transferable to LLM search spaces.               | Uses a cyclic weight-sharing method for token embeddings to stabilize search; experiments on ImageNet (implies GPU/TPU-scale compute).                                                                                 | Best ViTAS-searched model achieved **84.0%** on ImageNet (per survey).                                                                                                | **Cyclic weight sharing** for token embedding reduces bias among candidates; useful to preserve fairness across sampled submodels and improve ranking reliability.                                                                              |
-| **TF-TAS (Training-Free Transformer Architecture Search)**                   |                                               Zero-cost proxy / training-free NAS (DSS indicator).  | Highly relevant if you must drastically cut search cost — TF-TAS provides a low-cost proxy to score Transformer variants before expensive training/evaluation.                  | Very low compute — designed to evaluate candidate architectures cheaply (zero-cost proxies) rather than full training.                                                                                                 | TF-TAS/DSS indicators can rapidly rank ViT architectures with low overhead (per survey).                                                                              | Use **zero-cost proxies** (e.g., synaptic diversity / DSS) to prune search space before applying EC — major search cost reduction recommended in the paper.                                                                                     |
-| **Once-For-All (OFA) / OFA + Evolutionary search (used by AutoFormer etc.)** |                                                   One-shot super-net + evolutionary subnet search.  | Very relevant: OFA pattern is explicitly used as the efficiency backbone for Transformer NAS (train supernet once → evolutionary search over subnets). Good fit for large LLMs. | Train one over-parameterized network (large memory/compute for the supernet), then subnet evaluation is cheap (no retraining). Used across hardware targets.                                                           | OFA allows specialization of sampled submodels without fine-tuning in many cases (survey describes this as avoiding per-subnet fine-tuning).                          | **Train-once / sample-many** paradigm reduces cost of exploring many architectures. The survey notes OFA + evolutionary search is applied to Transformer supernets (explicitly recommended for cost reduction).                                 |
-| **AQ-BERT**                                                                  | Differentiable NAS for mixed-precision quantization (Supernet + DARTS-style bilevel optimization).  | Relevant if you plan to **quantize/compress** evolved LLMs for deployment (classification/summarization on limited hardware).                                                   | Builds a BERT supernetwork with per-layer subgroups and bit-width choices; implies non-trivial supernet training compute but avoids exhaustive per-config training.                                                    | AQ-BERT outperformed Q-BERT on four NLP tasks (per survey).                                                                                                           | Treat quantization as NAS (search per-layer precisions) — combine with EC or supernet sampling to jointly evolve architecture + precision for low-latency summarizers/classifiers.                                                              |
-| **AutoRC**                                                                   |                                    RL-NAS for relation classification (task-specific BERT search).  | Relevant example of applying NAS to a BERT-style model for classification tasks (shows feasibility of task-targeted NAS).                                                       | Search space large (1.64×10⁸ unique architectures for RC task); uses RL controller → implies significant compute but targeted to specific downstream task datasets.                                                    | Searched BERT-RC model performs significantly better than classical BERT-based RC models (per survey).                                                                | Use **task-specific search spaces** (as AutoRC did for RC) to constrain search and reduce wasted exploration — directly applicable to summarization/classification.                                                                             |
-| **HAT (Hardware-Aware Transformers)**                                        |                                          Hardware-aware NAS (multi-objective: latency + accuracy).  | Highly relevant if you need deployable LLMs (CPU/GPU/embedded). HAT explicitly searches for hardware-efficient Transformer variants.                                            | Targets heterogeneous hardware (Raspberry Pi ARM CPU, Intel Xeon CPU, Nvidia TITAN Xp GPU) — search includes latency constraints on these platforms.                                                                   | HAT yields speedups on target hardware with small accuracy trade-offs (survey reports hardware-aware gains).                                                          | **Inject hardware cost into fitness/loss** (latency predictors or combined objective) so EC evolves models that meet device constraints — explicit recipe in the paper for hardware-aware evolution.                                            |
-| **NASViT**                                                                   |                           Hybrid attention-convolution search space (MBConv + Transformer blocks).  | Relevant if you want to hybridize conv/local operations with attention in LLM variants (may help local pattern modeling in summarization/classification).                       | Search space includes MBConv parameters and Transformer primitives; implies standard NAS compute but allows early conv layers to reduce compute on high-res inputs (vision emphasis).                                  | NASViT-style hybrid designs can be more efficient on certain tasks by using convs early and attention later (survey describes this conceptually).                     | **Hybrid search space** can reduce compute by shifting expensive attention to lower-resolution representations — analogous design for text could limit attention on long sequences.                                                             |
+| Evolved Transformer                                                      |                                          Evolutionary NAS (cell-based, aging/progressive schemes).  | Direct precedent: evolves Transformer cells for sequence tasks (e.g., MT). Highly relevant as an EC → Transformer example.                                                      | Search runs at large scale: examples used TPU v2 chips; authors ran searches with many workers (search configs used 200 workers with 1 TPU V.2 each in some setups).                                                   | Outperformed Transformer on WMT benchmarks; matched baseline with ~78% parameters or better; achieved new SOTA BLEU on WMT’14 En→De (BLEU 29.8).                      | Progressive Dynamic Hurdles (PDH) — allocate more training to promising children; warm-start / seeding with known strong models; partial/short training of candidates (reduces full-train cost).                                        |
+| Primer (search described in paper)                                       |                                     Evolutionary-style search (mutations over ~25k architectures).  | Relevant — applies evolutionary search for language modeling (e.g., LM1B). Shows convolution+attention hybrids that may help classification/summarization.                      | Search constrained by a fixed compute budget example: search budget cited as 24 TPU-v2 hours for experiments.                                                                                                      | Primer architecture matched Vanilla Transformer performance while using ~4.2× less compute time on the language modelling task (per the survey).                  | Uses depthwise conv inside attention heads (MDHA) and evolutionary search with a fixed training budget — practical pattern for reducing search cost by constraining per-candidate training time.                                            |
+| DARTSformer                                                              |                            Differentiable / One-shot NAS adaptation (DARTS + Reversible Networks).  | Relevant to gradient-based (faster) search in Transformer spaces; useful hybrid option when EC is expensive.                                                           | Designed to reduce memory via reversible networks so Supernetwork fits larger hidden sizes (reduces GPU memory requirement). (Paper motivation is explicitly memory reduction.)                                    | Searched networks perform better than Vanilla Transformer and comparable to large Evolved Transformer at significantly lower search cost (per survey summary).    | Reversible networks reduce memory footprint of the Supernet, enabling DARTS-style search for transformers with larger hidden sizes (a concrete way to lower resource needs).                                                                |
+| AutoTrans                                                                |                                ENAS-style / RL + weight-sharing for end-to-end Transformer design.  | Directly searches Transformer hyperparameters (heads, depth, activations, layer-norm choices) — highly relevant to architecture-level evolution for LLM tasks.                  | Search performed directly on translation benchmarks (Multi-30K, WMT-14 En-De, CoNLL2003) — implies non-trivial GPU/TPU compute but the method is ENAS-style (weight sharing reduces cost vs full-train per-candidate). | AutoTrans-searched models produced better BLEU than manually designed networks across datasets (per survey).                                                          | Uses ENAS (parameter sharing) to avoid full training per candidate → concrete cost-saving approach I could adapt for summarization/classification.                                                                                          |
+| TextNAS                                                                  |                                 ENAS-style (ENAS + mixed ops: conv, pooling, RNN, self-attention).  | Relevant for text classification / NLI — search mixes conv/RNN/attention blocks (flexible for classification tasks).                                                            | Uses ENAS weight-sharing (so lower compute compared to training each child). Experiments on SST and other text datasets.                                                                                               | Searched TextNAS models outperformed previous conv-only searched models on multiple classification datasets (reported in survey).                                     | ENAS weight sharing and multi-path macro-space let the method explore diverse layer types without training from scratch — a practical approach for my classifier/summarizer search space.                                                 |
+| AutoFormer                                                               |                                 One-shot / Super-Net + Evolutionary search (Transformer-specific).  | Very relevant — AutoFormer is Transformer-specific One-shot NAS; directly applicable to evolving Transformer components for LLMs.                                               | Supernetwork trained once; memory reduced via weight entanglement (superweight of highest dimension) — lowers memory/compute compared to naive supernets. Article reports evaluated models (tiny/small/base).          | AutoFormer-tiny/small/base achieved 74.7% / 81.7% / 82.4% on ImageNet with 5.7M/22.9M/53.7M params (outperforming ViT/DeiT and EfficientNet baselines in survey). | Weight-entanglement (superweight) → only one forward/backward pass needed; combined with evolutionary search on subnets after training the supernet (gives efficient subnet evaluation). This is directly cited as an efficiency technique. |
+| ViTAS                                                                    |                       Evolutionary search on ViT search spaces (cyclic weight-sharing for tokens).  | Relevant: ViTAS adapts self-attention search elements (heads, patch size, MLP dims) and uses EC for budgeted search — concepts transferable to LLM search spaces.               | Uses a cyclic weight-sharing method for token embeddings to stabilize search; experiments on ImageNet (implies GPU/TPU-scale compute).                                                                                 | Best ViTAS-searched model achieved 84.0% on ImageNet (per survey).                                                                                                | Cyclic weight sharing for token embedding reduces bias among candidates; useful to preserve fairness across sampled submodels and improve ranking reliability.                                                                              |
+| TF-TAS (Training-Free Transformer Architecture Search)                   |                                               Zero-cost proxy / training-free NAS (DSS indicator).  | Highly relevant if you must drastically cut search cost — TF-TAS provides a low-cost proxy to score Transformer variants before expensive training/evaluation.                  | Very low compute — designed to evaluate candidate architectures cheaply (zero-cost proxies) rather than full training.                                                                                                 | TF-TAS/DSS indicators can rapidly rank ViT architectures with low overhead (per survey).                                                                              | Use zero-cost proxies (e.g., synaptic diversity / DSS) to prune search space before applying EC — major search cost reduction recommended in the paper.                                                                                     |
+| Once-For-All (OFA) / OFA + Evolutionary search (used by AutoFormer etc.) |                                                   One-shot super-net + evolutionary subnet search.  | Very relevant: OFA pattern is explicitly used as the efficiency backbone for Transformer NAS (train supernet once → evolutionary search over subnets). Good fit for large LLMs. | Train one over-parameterized network (large memory/compute for the supernet), then subnet evaluation is cheap (no retraining). Used across hardware targets.                                                           | OFA allows specialization of sampled submodels without fine-tuning in many cases (survey describes this as avoiding per-subnet fine-tuning).                          | Train-once / sample-many paradigm reduces cost of exploring many architectures. The survey notes OFA + evolutionary search is applied to Transformer supernets (explicitly recommended for cost reduction).                                 |
+| AQ-BERT                                                                  | Differentiable NAS for mixed-precision quantization (Supernet + DARTS-style bilevel optimization).  | Relevant if you plan to quantize/compress evolved LLMs for deployment (classification/summarization on limited hardware).                                                   | Builds a BERT supernetwork with per-layer subgroups and bit-width choices; implies non-trivial supernet training compute but avoids exhaustive per-config training.                                                    | AQ-BERT outperformed Q-BERT on four NLP tasks (per survey).                                                                                                           | Treat quantization as NAS (search per-layer precisions) — combine with EC or supernet sampling to jointly evolve architecture + precision for low-latency summarizers/classifiers.                                                              |
+| AutoRC                                                                   |                                    RL-NAS for relation classification (task-specific BERT search).  | Relevant example of applying NAS to a BERT-style model for classification tasks (shows feasibility of task-targeted NAS).                                                       | Search space large (1.64×10⁸ unique architectures for RC task); uses RL controller → implies significant compute but targeted to specific downstream task datasets.                                                    | Searched BERT-RC model performs significantly better than classical BERT-based RC models (per survey).                                                                | Use task-specific search spaces (as AutoRC did for RC) to constrain search and reduce wasted exploration — directly applicable to summarization/classification.                                                                             |
+| HAT (Hardware-Aware Transformers)                                        |                                          Hardware-aware NAS (multi-objective: latency + accuracy).  | Highly relevant if you need deployable LLMs (CPU/GPU/embedded). HAT explicitly searches for hardware-efficient Transformer variants.                                            | Targets heterogeneous hardware (Raspberry Pi ARM CPU, Intel Xeon CPU, Nvidia TITAN Xp GPU) — search includes latency constraints on these platforms.                                                                   | HAT yields speedups on target hardware with small accuracy trade-offs (survey reports hardware-aware gains).                                                          | Inject hardware cost into fitness/loss (latency predictors or combined objective) so EC evolves models that meet device constraints — explicit recipe in the paper for hardware-aware evolution.                                            |
+| NASViT                                                                   |                           Hybrid attention-convolution search space (MBConv + Transformer blocks).  | Relevant if you want to hybridize conv/local operations with attention in LLM variants (may help local pattern modeling in summarization/classification).                       | Search space includes MBConv parameters and Transformer primitives; implies standard NAS compute but allows early conv layers to reduce compute on high-res inputs (vision emphasis).                                  | NASViT-style hybrid designs can be more efficient on certain tasks by using convs early and attention later (survey describes this conceptually).                     | Hybrid search space can reduce compute by shifting expensive attention to lower-resolution representations — analogous design for text could limit attention on long sequences.                                                             |
 
 
 Good suggestions from this survey (there are more):
@@ -513,12 +513,12 @@ Good suggestions from this survey (there are more):
 
 # https://openreview.net/forum?id=9UExQpH078 - RZ-NAS: Enhancing LLM-guided Neural Architecture Search via Reflective Zero-Cost Strategy
 
-Task:
+### Task:
 
 To design an LLM-guided Neural Architecture Search (NAS) framework that uses reflection and zero-cost proxies to optimize architectures efficiently, reducing search time and compute while maintaining or improving performance.
 It focuses on automated architecture generation for image classification (CIFAR-10/100, ImageNet-16-120) and object detection (COCO), but the methodology generalizes to other tasks, including those relevant to LLMs (e.g., summarization/classification).
 
-Performance:
+### Performance:
 
 - Outperforms all compared LLM-to-NAS and Zero-Cost NAS baselines (GPT-NAS, GENIUS, LLMatic, EvoPrompting, etc.).
 - On NAS-Bench-201:
@@ -529,7 +529,7 @@ Performance:
     - With 450 M FLOPs, achieves 79 % Top-1 accuracy, 62× faster search cost than DONNA (25 GPU days -> 0.4 GPU days).
 - On object detection (COCO): improves mAP while maintaining similar FLOPs compared with ResNet + MAE-DET (Fig. 4).
 
-Requirements:
+### Requirements:
 
 - Uses GPT-4o to generate mutations and reflections.
 - Tokens per run: 2 300–2 600 input / 150–200 output.
@@ -537,7 +537,7 @@ Requirements:
 - Population: 100 (CIFAR) to 256 (ImageNet/COCO).
 - Cost per proxy: ≈ $ 75 (0.03 GPU days) — far less than 1–40 GPU days of previous LLM-to-NAS methods.
 
-What they use:
+### What they use:
 Evolutionary NAS framework (selection–mutation–reflection loop).
 LLM-guided mutation: LLM replaces random mutation using textual genotypes and code-level understanding.
 Reflection module: LLM reviews previous mutations, scores, and exceptions to propose improved architectures (“Generate -> Evaluate -> Reflect” loop).
@@ -545,7 +545,7 @@ Zero-Cost evaluation: training-free proxies (GraSP, GradNorm, Synflow, ZenNAS, Z
 Population-based search: dynamic population where worst architectures are removed each iteration.
 Structured prompting: combines system + in-context + user prompts with both text- and code-level descriptions.
 
-Relevance of this paper:
+### Relevance of the paper:
 
 Highly relevant to project — it integrates LLM reasoning with evolutionary NAS, enabling architecture evolution guided by textual feedback rather than black-box mutation.
 
@@ -575,12 +575,12 @@ Note: Try to run and understand the code.
 
 # https://proceedings.mlr.press/v70/real17a.html - Large-Scale Evolution of Image Classifiers
 
-Task:
+### Task:
 
 They evolve CNN architectures for image classification on CIFAR-10 and CIFAR-100 datasets.
 The goal is to show that neuroevolution, when scaled massively, can rival or exceed hand-designed architectures.
 
-Performance:
+### Performance:
 
 CIFAR-10:
 - Best evolved model achieved 94.6% test accuracy,
@@ -595,7 +595,7 @@ These results were competitive with hand-designed networks (e.g., ResNet 93.4%, 
 
 Outperformed all prior automated discovery methods (RL-based, Bayesian, Q-learning NAS) that started from fixed or constrained architectures.
 
-Requirements:
+### Requirements:
 
 - Required massive distributed computation.
 
@@ -616,7 +616,7 @@ Requirements:
 - Despite high compute, once evolution begins, no human tuning is needed.
 - Overall, probably too much of compute cost.
 
-What they use:
+### What they use:
 
 - Type: Simple large-scale evolutionary algorithm (tournament selection).
 
@@ -636,7 +636,7 @@ What they use:
 
 - Initialization: all individuals start as 1-layer, no-convolution models — evolution must build complexity from scratch.
 
-Relevance of the paper:
+### Relevance of the paper:
 - Establishes that simple evolutionary strategies can yield competitive architectures when scaled.
 - Introduces weight inheritance, which canbe adapted for Transformer fine-tuning.
 - Demonstrates that structural mutation operators (like add/remove skip connections or layers) effectively explore architecture space.
@@ -646,12 +646,12 @@ Relevance of the paper:
 
 # https://ojs.aaai.org/index.php/AAAI/article/view/4405 - Regularized Evolution for Image Classifier Architecture Search
 
-Task:
+### Task:
 
 To evolve image classifier architectures automatically using an evolutionary algorithm that improves on previous methods by introducing a regularization mechanism (“aging evolution”).
 The objective: produce architectures that match or exceed human-designed and reinforcement learning–discovered models on CIFAR-10 and ImageNet, while using a simpler and faster search process.
 
-Performance:
+### Performance:
 
 CIFAR-10:
 - AmoebaNet-A (N=6, F=32): 3.40% ± 0.08 test error (2.6M parameters)
@@ -665,7 +665,7 @@ ImageNet:
 Search efficiency:
 - Evolution achieved higher early-stage accuracy than RL and random search, reaching competitive results faster, a major benefit in compute-constrained settings.
 
-Requirements:
+### Requirements:
 - Hardware: ~450 NVIDIA K40 GPUs. ... Not happening
 - Compute: ~7 days per experiment (≈20,000 models trained).
 
@@ -680,7 +680,7 @@ Requirements:
     - Mutation probability for “identity” = 0.05.
     - Each child inherits architecture but retrains from scratch.
 
-What they use:
+### What they use:
 
 Aging (Regularized) Evolution, a variant of tournament selection.
 Each model has an age (creation time).
@@ -688,9 +688,298 @@ Instead of removing the worst model, the oldest model in the population is disca
 Encourages diversity and regularization, preventing overfitting to lucky high-performers.
 They only use mutation and selection, no crossover.
 
-Relevance of the paper:
+### Relevance of the paper:
 - Introduces aging regularization, which could be adapted for evolving Transformer/LLM architectures: it keeps search diverse and avoids premature convergence. An idea.
 - Demonstrates that simple mutation-based EC algorithms can reach state-of-the-art accuracy when run at scale.
 - The concept of age-based regularization could translate to LLM evolution as a way to retain exploration and improve retrainability of candidate models.
+
+# https://arxiv.org/abs/2501.13883 - Utilizing Evolution Strategies to Train Transformers in Reinforcement Learning
+
+### Task:
+
+Test whether Evolution Strategies (ES) can successfully train Transformer-based policies in reinforcement learning (RL) settings.
+The goal is to verify if these scalable, black-box optimizers can handle complex models like Decision Transformers, beyond simple feedforward policies.
+
+### Performance:
+
+- Gradient-based Online Decision Transformer failed to learn effectively.
+- TD3 worked but required longer wall-clock time for similar performance.
+
+### Requirements:
+
+- 301 CPU cores per run (300 workers + 1 master).
+- No GPU dependency (CPU-only ES implementation using MPI).
+- Each experiment = 10 independent runs (100–200 iterations).
+
+### What they use:
+
+- Algorithm: OpenAI-ES (Natural Evolution Strategy variant)
+- Maintains a Gaussian distribution over policy parameters.
+- Offspring sampled from N() evaluated, and used to update the mean.
+- Uses an approximate natural gradient (scaled by variance).
+
+### Relevance of the paper:
+- Confirms that evolutionary methods can train Transformer architectures effectively, even with millions of parameters.
+- Demonstrates high parallel efficiency: critical for scaling evolutionary search for LLMs.
+- Shows that Evolution Strategies can act as black-box optimizers for complex LLM architectures or weights.
+- Suggests combining evolutionary optimization with pretrained LLMs.
+
+# https://arxiv.org/abs/2502.06301 - Utilizing Novelty-based Evolution Strategies to Train Transformers in Reinforcement Learning
+
+### Task:
+
+To investigate whether NS-ES (Novelty Search ES) and NSR-ES (Novelty Search + Reward ES) can successfully train Transformer-based architectures, such as Decision Transformers, in reinforcement learning (RL) settings.
+The goal was to determine if introducing novelty search improves exploration and performance when training large Transformer policies.
+
+### Performance:
+
+- NS-ES: Progressed, but required far more iterations to train Decision Transformers effectively.
+Successful on smaller feed-forward models, but too slow for Transformers.
+
+- NSR-ES: Comparable final performance to OpenAI-ES, sometimes even matching it.
+Stable training for both feed-forward and Decision Transformer models.
+
+### Requirements:
+- 301 CPU cores (300 workers + 1 master)
+- CPU-only training (no GPU required)
+- 10 independent runs per experiment
+- Total compute: several hundred thousand environment episodes per run
+
+
+### What they use:
+- Base algorithm: OpenAI-ES (a form of Natural Evolution Strategy).
+- Variants used:
+    - NS-ES: pure novelty search — fitness replaced with novelty score (distance from past behaviors).
+    - NSR-ES: hybrid approach — average of reward and novelty.
+
+
+### Relevance of the paper:
+- It introduces novelty-driven exploration, useful for escaping local minima during architecture evolution or fine-tuning.
+- NSR-ES’s quality-diversity balance is conceptually valuable for multi-objective Transformer optimization
+- Demonstrates scalable CPU-only training, relevant for low-GPU environments.
+
+
+# https://www.sciencedirect.com/science/article/pii/S0020025524013203?casa_token=Wie6O44__QYAAAAA:GMjYk-JXrM73pSzbSP3xSwpcnBMVvxYl8ob4tw3Ze_kEFvxiXOegpJTcY_tSkamNoiQJh_zwCAM - EvolutionViT: Multi-objective evolutionary vision transformer pruning under resource constraints
+### Task:
+
+To compress and accelerate Vision Transformers (ViTs) while maintaining performance, particularly for deployment on resource-constrained edge devices (e.g., IoT, mobile).
+The authors frame ViT pruning as a large-scale constrained multi-objective optimization problem, balancing performance vs computational cost (FLOPs) under device-specific resource constraints.
+
+### Performance:
+
+- Datasets: ImageNet, CIFAR-10/100, and COVID-19 Chest X-ray.
+
+- Baseline: DeiT family (Tiny, Small, Base).
+
+- Results (ImageNet):
+
+    - DeiT-T: 1.3 -> 0.8 G FLOPs (−38%), Top-1 ↓ 2.6 %, Top-5 ↓ 1.7 %.
+
+    - DeiT-S: 4.6 -> 2.7 G FLOPs (−41%), Top-1 ↓ 1.4 %, Top-5 ↓ 0.95 %.
+
+    - DeiT-B: 17.6 -> 9.9 G FLOPs (−44%), Top-1 ↓ 1.9 %, Top-5 ↓ 1.05 %.
+
+- CIFAR-10/100: ≈ 39 % reduction in FLOPs, ≤ 2 % accuracy drop.
+
+- COVID-19 X-ray: 39 % reduction in FLOPs with < 0.2 % accuracy loss.
+
+- Against SOTA: Outperformed or matched SCOP, PoWER, UVC, WDPruning, and HVT in accuracy/FLOPs trade-off.
+
+### Requirements:
+
+- Hardware: Experiments run on NVIDIA A800 GPUs (PyTorch).
+- Population size: Not explicitly stated, but derived from GA-based multi-objective optimization.
+- No specialized accelerators required beyond GPU for fine-tuning.
+- Constraint threshold examples: 0.8 × FLOPs (e.g., DeiT-B → ≤ 14 G FLOPs).
+- Main compute bottleneck: Evaluation of candidate ViTs during evolution.
+
+### What they use:
+
+- Multi-Objective Genetic Algorithm (MOEA) variant called EvolutionViT
+- Objectives:
+    - Minimize model performance loss (C).
+    - Minimize number of patches (retained computational cost).
+
+### Relevance of the paper:
+
+- Demonstrates a multi-objective evolutionary search applied directly to Transformer architectures.
+- Uses constraint-aware evolution: highly transferable to LLM efficiency optimization.
+- The knee-guided optimization concept can generalize to balancing LLM quality vs inference cost.
+- Introduces dimension-grouping and reduction, useful for scaling EC on large Transformer search spaces
+
+# https://arxiv.org/abs/2210.00181 - EAPruning: Evolutionary Pruning for Vision Transformers and CNNs
+
+### Task:
+
+To create a universal, efficient, and low-cost pruning framework for both Vision Transformers (ViTs) and CNNs, using evolutionary algorithms.
+The goal is to reduce FLOPs and model size significantly without major accuracy loss — enabling deployment in resource-constrained environments.
+
+### Performance:
+
+- ResNet50:
+    - 50% FLOPs reduction → 1.37× speedup → −0.3% accuracy loss.
+
+- MobileNetV1:
+    - 50% FLOPs reduction → 1.34× speedup → −0.09% accuracy loss.
+
+- DeiT-Base (Vision Transformer):
+    - 40% FLOPs reduction → 1.4× speedup → −0.5% accuracy loss.
+    - 13.5G → 11.0G FLOPs, Top-1 accuracy: 81.3 → 81.6%.
+
+- Comparison:
+    - Outperforms AMC, NetAdapt, and MetaPruning.
+    - Comparable to AutoFormer (NAS) but simpler and cheaper (no supernet).
+
+- Hardware test:
+    - On NVIDIA A30 GPU:
+        - ResNet50 ×0.5 = +37% throughput,
+        - DeiT-Base ×0.6 = +40% throughput.
+
+### Requirements:
+
+- Hardware: NVIDIA A100 GPU (training) + NVIDIA A30 GPU (inference tests).
+- Search configurations:
+    - Population size = 64, Iterations ≈ 30–50 → ~1500 evaluated models.
+    - Total search time = 3.17 GPU hours (very low cost).
+
+- Dataset: ImageNet (subset: 1.5k images for weight reconstruction, 5k for evaluation).
+- Training:
+    - Finetuning for 100 epochs (instead of 300) with DeiT recipe.
+    - ResNet retrained from scratch (learning rate 0.2, cosine annealing).
+
+- Software: PyTorch + TensorRT (for deployment)
+
+
+
+### What they use:
+- Multi-Objective Evolutionary Algorithm (NSGA-III)
+- Objectives:
+    - Minimize FLOPs,
+    - Maximize accuracy (proxy evaluation via weight reconstruction)
+
+
+### Relevance of the paper:
+
+- Proposes a universal EC-based pruning framework applicable to both CNNs and Transformers.
+- Uses multi-objective evolutionary search (NSGA-III), directly transferable to optimizing LLM architecture-efficiency trade-offs.
+- Introduces weight reconstruction for fast evaluation — a concept that could reduce compute in LLM evolution.
+- Demonstrates cross-architecture generality and hardware-level speedups, vital for EC-driven LLM compression.
+- Structural changes matter more than weight values -> architecture search is key.
+
+
+# https://openreview.net/forum?id=l7QzcZpjc5 - EvoPress: Accurate Dynamic Model Compression via Evolutionary Search
+
+### Task
+To develop a unified, efficient evolutionary framework — called EvoPress — for dynamic (non-uniform) compression of large language models (LLMs) such as Llama, Mistral, and Phi.  
+EvoPress optimizes layer-wise compression profiles (for pruning, sparsity, or quantization) without assuming linear or monotonic error relationships, unlike prior approaches.  
+The goal: maximize compression while minimizing perplexity loss, adapting compression levels per layer dynamically.
+
+
+### Performance
+- Models evaluated:
+  Llama-2/3 (7B–8B), Mistral-7B-v0.3, Phi-3-Medium (14B).
+- Compression methods tested:
+  1. Depth pruning (layer/block dropping) 
+  2. Unstructured sparsity 
+  3. Quantization (2–6 bits, per-layer adaptive)
+- Key results:
+  - Depth pruning: 
+    - Outperforms *ShortGPT, Shortened Llama, Weight Subcloning,* and *OWL*.  
+    - Can remove >50% of layers while maintaining coherent performance — first method to achieve this.  
+  - Unstructured sparsity (70%):
+    - Up to 3× better perplexity and +4–8% zero-shot accuracy vs. OWL or uniform sparsity.  
+  - Quantization (3-bit avg):
+    - Outperforms GPTQ uniform and DP-based SPDY by 3–5 points in zero-shot accuracy.  
+    - Works even with restricted vLLM (4/8-bit only) quantization options.  
+- Runtime:
+  - Full EvoPress converges in 5–6 hours on one RTX 3090 (24 GB).  
+  - “Super-fast” variant converges in ~1 hour with similar accuracy.
+
+
+### Requirements (GPU, compute, etc.)
+- Hardware:  
+  - Single RTX 3090 GPU (24 GB VRAM) or equivalent.  
+  - Optional: multi-GPU for parallel evaluation, but not required.  
+- Runtime:  
+  - Standard mode: 5–6 h per model.  
+  - Fast mode: 1–2 h with reduced token count.  
+- Data:  
+  - 64 k–8 M calibration tokens (FineWeb-Edu dataset).  
+- Fitness evaluation:  
+  - Uses KL-divergence between compressed and base model outputs for low-cost proxy evaluation.
+
+
+### What They Use (EC Algorithm)
+- Algorithm: A specialized (1 + λ) Evolutionary Algorithm with:
+  - Level-switch mutation: swaps compression levels between two layers while preserving the global constraint (e.g., total FLOPs or sparsity).  
+  - Multi-step selection: evaluates offspring on progressively larger sample sets, reducing variance and cost.  
+  - Elitism: only the fittest offspring replaces the parent, ensuring stability.  
+- Population: single parent, λ ≈ 8–64 offspring per generation.  
+- Fitness function: minimize \( D_{KL}(P_M \| Q_{\hat{M}}) \) — divergence between base model and compressed offspring.  
+- Search space: per-layer compression levels (bitwidth, sparsity, or pruning choice).  
+- Mathematical guarantee:  
+  - Proven convergence for linear fitness landscapes in \( O(k(n−k)/λ) \) generations.  
+  - Empirically converges within 6 generations on 8B-parameter models.
+
+
+### Relevance of the Paper
+
+- Directly focuses on evolutionary optimization for LLMs — not vision models or small networks.  
+- Uses evolutionary search for layer-wise adaptation, generalizing to sparsity, quantization, and pruning — all core for architecture evolution.  
+- Highly efficient: runs on a single GPU with strong theoretical backing.  
+- Introduces level-switch mutation — a lightweight variation operator ideal for evolutionary LLM compression.  
+- Results validated on current SOTA LLMs (Llama, Mistral, Phi).  
+- Primarily targets post-training compression, not full architecture redesign, but its framework is extendable to structural evolution.
+
+
+### Small Resume and Important Details You Might Use
+- Core idea:  
+  Formulate dynamic LLM compression as an evolutionary optimization problem that automatically finds the best per-layer compression configuration.
+- Novel contributions:  
+  - Rejects the standard assumption that compression error is additive or monotone.  
+  - Introduces efficient (1 + λ)-EA with constrained mutation preserving model size.  
+  - First EC framework covering all major compression types in LLMs.  
+  - Provably convergent and sample-efficient.  
+- Implementation details:  
+  - Measures fitness with KL-divergence instead of validation loss (saves compute).  
+  - Uses multi-stage evaluation for progressively larger samples -> less variance, fewer full-batch runs.  
+  - Can integrate with SparseGPT, GPTQ, or vLLM.  
+- Efficiency & scalability:  
+  - Smooth fitness landscape → elitist evolution works best (no crossover needed).  
+  - Exploits structured layer dependencies — improves search stability.  
+- Practical implications for thesis:  
+  - EvoPress can serve as a baseline EC framework for LLM structure optimization.  
+  - The level-switch mutation and multi-step evaluation ideas can be reused to evolve LLM architectures or attention configurations.  
+  - The KL-based fitness evaluation could guide evolutionary fine-tuning for summarization or classification tasks without full retraining.  
+  - The approach supports modular combination of EC with pruning + quantization + layer selection — a possible direction.  
+
+
+### In summary:  
+EvoPress is currently the most advanced evolutionary optimization framework specifically designed for large-scale LLM compression and architecture adaptation.  
+Its efficiency, mathematical convergence proof, and direct application to real LLMs make it one of the most relevant and transferable studies to my thesis.
+
+
+#
+### Task:
+### Performance:
+### Requirements:
+### What they use:
+### Relevance of the paper:
+
+#
+### Task:
+### Performance:
+### Requirements:
+### What they use:
+### Relevance of the paper:
+
+
+#
+### Task:
+### Performance:
+### Requirements:
+### What they use:
+### Relevance of the paper:
+
 
 
