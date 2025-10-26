@@ -959,19 +959,297 @@ EvoPress is currently the most advanced evolutionary optimization framework spec
 Its efficiency, mathematical convergence proof, and direct application to real LLMs make it one of the most relevant and transferable studies to my thesis.
 
 
-#
-### Task:
-### Performance:
-### Requirements:
-### What they use:
-### Relevance of the paper:
+# https://arxiv.org/abs/1711.09846 - Population Based Training of Neural Networks
 
-#
+### Task
+This paper investigates the use of Evolution Strategies (ES) as a scalable and parallelizable alternative to gradient-based Reinforcement Learning (RL) methods.  
+The goal is to evaluate whether ES can match or surpass traditional RL algorithms in complex control and game environments while offering better scalability and simplicity of implementation.
+
+Tasks tested: MuJoCo continuous control and Atari games (including Humanoid-v1, Hopper-v1, and Breakout)
+
+### Performance  
+- ES achieved:
+  - Performance comparable to policy gradient methods like TRPO and A3C.
+  - Faster wall-clock convergence when parallelized over hundreds of CPUs. (Too many cpus for us)
+- Example results:
+  - Humanoid-v1: ES reached average reward of 6,000 in under 10 minutes using 1,440 CPUs. (1.440....)
+  - Atari Breakout: ES achieved human-level performance after 1 hour of training.
+- Key comparison: While ES requires more environment interactions, it scales much better with CPU parallelization and exhibits higher robustness to noise.
+
+
+### Requirements (Hardware, Compute, etc.)
+- Hardware setup:
+  - 1,440 CPU cores on distributed compute cluster.
+  - Each worker evaluates one policy perturbation per iteration.
+- Communication:
+  - Low-bandwidth: workers only send scalar rewards, not gradients.
+  - Makes ES efficient for large distributed systems.
+- Implementation:
+  - Simple to implement using MPI or Python multiprocessing.
+  - No backpropagation required for gradient computation.
+
+---
+
+### What They Use (EC Algorithm)
+- Evolution Strategies (ES), a form of Natural Evolution Strategies (NES).
+- Key techniques:
+  - Antithetic sampling to reduce variance.
+  - Fitness normalization to stabilize updates.
+  - Rank transformation for robustness to outliers.
+- Advantages:
+  - No need for backpropagation or differentiation.
+  - Naturally parallelizable and noise-tolerant.
+  - Works for non-differentiable objectives and discrete actions.
+
+
+### Relevance of the Paper
+- This paper is foundational for modern evolutionary computation in large-scale machine learning.
+- Demonstrates that gradient-free optimization can achieve deep learning performance levels.
+- Introduces scalable, parallel ES that has directly inspired subsequent work on Transformer training and LLM evolution.
+
+# https://arxiv.org/abs/1703.03864 - Evolution Strategies as a Scalable Alternative to Reinforcement Learning
+
 ### Task:
+The paper investigates using Evolution Strategies (ES) as a black-box optimization method to train neural network policies. The main tasks include controlling simulated robots in MuJoCo and playing Atari games directly from pixel inputs.
+
 ### Performance:
+ES achieved competitive results compared to policy gradient methods:
+- Solved the 3D humanoid walking task in 10 minutes using 1,440 CPUs (linear scaling). Like the other paper, thats too much cpus
+- Matched Trust Region Policy Optimization (TRPO) performance on MuJoCo with less than 10× more samples.
+- Comparable performance to A3C on Atari games, achieving similar results in 1 hour of training that A3C required a full day for.
+
 ### Requirements:
+- Up to 1,440 CPU cores for large-scale parallel training. (Nasa requirements)
+- No GPU necessary for training due to the gradient-free nature of ES.
+- Low communication bandwidth since only scalar returns are exchanged between workers.
+- Fixed hyperparameters across environments for robustness.
+
 ### What they use:
+-  Natural Evolution Strategies (NES) with Gaussian perturbations.
+- Enhancements:
+  - Virtual Batch Normalization for improved exploration.
+  - Antithetic (mirrored) sampling for variance reduction.
+  - Fitness shaping using rank transformation.
+  - Weight decay to stabilize training.
+  - Parameter-space smoothing rather than action-space smoothing.
+
 ### Relevance of the paper:
+This work demonstrates a scalable, gradient-free evolutionary optimization method for deep neural architectures. Its success in large-scale environments suggests strong potential for adapting ES to optimize or evolve Transformer/LLM architectures efficiently.
+
+
+# https://arxiv.org/abs/1604.00772 - The CMA Evolution Strategy: A Tutorial
+
+CMA-ES is an evolutionary optimization algorithm designed for non-linear, non-convex continuous optimization problems. It adapts a multivariate normal distribution over generations to search for optimal solutions by updating its mean, covariance matrix, and step size.
+
+# https://www.jmlr.org/papers/volume15/wierstra14a/wierstra14a.pdf - Natural Evolution Strategies
+
+Introduces a principled family of black-box optimization algorithms that use natural gradients to adapt a parameterized search distribution toward higher expected fitness. NES generalizes traditional Evolution Strategies by formalizing them in a gradient-based framework, where updates are made in the space of probability distributions rather than directly on parameters.
+
+The method maintains a search distribution (typically a multivariate Gaussian) defined by a mean and covariance matrix, samples candidate solutions, evaluates their fitness, and updates the distribution parameters along the natural gradient direction—a second-order method that normalizes the gradient using the Fisher information matrix. This yields parameterization-invariant, stable updates and avoids premature convergence.
+
+Experiments on standard black-box benchmarks (BBOB) showed that NES performs comparably to or better than CMA-ES, especially when extended with adaptation sampling. The separable variant (SNES) is efficient for high-dimensional problems due to linear update cost.
+
+In essence, NES provides a mathematically grounded, scalable evolutionary optimization framework ideal for optimizing non-differentiable or complex objective functions. Its gradient-based yet gradient-free approach makes it particularly relevant for optimizing neural architectures, including Transformers and LLM components, where differentiability or direct gradient access might be impractical.
+
+# https://www.academia.edu/256871/Evolving_Neural_Networks_Through_Augmenting_Topologies - Evolving Neural Networks Through Augmenting Topologies
+
+### Task:
+The paper presents an evolutionary method that simultaneously optimizes both the weights and the topology of artificial neural networks. The main goal is to evolve increasingly complex networks that perform well on reinforcement learning tasks, starting from minimal architectures and adding structural complexity only when beneficial. The benchmark tasks used include double pole balancing and other control problems.
+
+
+### Performance:
+- NEAT consistently outperformed fixed-topology and other evolutionary approaches in reinforcement learning benchmarks.
+- Demonstrated faster learning and better generalization by starting from simple networks and growing complexity over time.
+- Achieved superior control in the double pole balancing task without velocity information, outperforming algorithms like CoSyNE and standard genetic algorithms.
+- Showed that complexification through structural evolution leads to more efficient search and better long-term performance.
+
+
+### Requirements:
+- CPU-based computation, feasible for modest hardware of the early 2000s.
+- Population size typically between 100–500 individuals.
+- Suitable for small to medium-scale neural architectures (few hundred connections).
+- No GPU or parallelization required, but later implementations (like HyperNEAT) benefit from distributed setups.
+
+
+### What they use:
+- NeuroEvolution of Augmenting Topologies (NEAT)
+  - Encodes neural networks as genomes containing nodes and connections.
+  - Uses historical markings (innovation numbers) to align genes during crossover, preventing destructive recombination.
+  - Employs speciation to protect new structural innovations while allowing them to evolve.
+  - Implements complexification, meaning evolution starts from minimal structures and adds nodes/connections over generations.
+  - Selection based on fitness sharing across species to maintain diversity.
+- Operators:
+  - Mutation: adds new nodes or connections, perturbs weights.
+  - Crossover: recombines compatible genomes based on historical markers.
+  - Speciation and elitism ensure balance between exploration and exploitation.
+
+### Relevance of the paper:
+- NEAT is foundational for neuroevolution and evolutionary architecture search.
+- Its principles directly apply to evolving Transformer or LLM architectures, where structural evolution (adding or modifying attention heads, layers, or embeddings) mirrors NEAT’s complexification.
+- The concept of innovation tracking is particularly valuable for maintaining compatibility between evolving LLM variants.
+- Demonstrates that structural evolution enables continual improvement without hand-designed architectures.
+- Provides a conceptual and methodological basis for dynamic topology evolution in modern large-scale models.
+
+# https://openaccess.thecvf.com/content_iccv_2017/html/Xie_Genetic_CNN_ICCV_2017_paper.html - Genetic CNN
+
+### Task:
+The paper proposes an automatic method to design deep convolutional neural network (CNN) architectures using a genetic algorithm (GA). Instead of manually designing network structures, the study encodes each CNN as a fixed-length binary string representing its topology, and then evolves these structures over generations using genetic operations. The objective is to optimize network accuracy efficiently in a large, discrete architecture search space. Tested on CIFAR-10.
+
+
+### Performance:
+- The genetic CNN (GeNet) was trained and tested on the CIFAR-10 dataset, achieving 77.19% accuracy (22.81% error) after 50 generations, outperforming baseline manually designed models like LeNet and ResNet-like structures with similar size.
+- The learned architectures were successfully transferred to larger datasets:
+  - CIFAR-100: 29.03% error (competitive with state-of-the-art models).
+  - SVHN: 1.99% error (comparable to top CNNs at the time).
+  - ImageNet (ILSVRC2012): 27.87% Top-1 error and 9.74% Top-5 error, outperforming VGGNet-16 and VGGNet-19 while having similar parameter counts.
+- Showed that automatically evolved structures can generalize well to different scales and domains.
+
+### Requirements:
+- Each full genetic run (50 generations with 20 individuals) required approximately 17 GPU-days, distributed over 10 GPUs (each training two networks per generation).
+- Each individual CNN was trained from scratch on CIFAR-10 for 120+60+40+20 epochs (total of 240 epochs) with staged learning rates.
+- Each individual training took roughly 0.4 hours on a single GPU.
+- The genetic search explored only 1,020 individuals out of a possible 524,288 architectures, demonstrating efficient exploration.
+
+
+### What they use:
+- Standard Genetic Algorithm (GA)
+  - Encoding: Each CNN is represented as a fixed-length binary string encoding the connectivity pattern between layers within multiple stages.
+  - Population: 20 individuals per generation, evolved for 50 generations.
+  - Operators:
+    - Selection: Russian roulette selection proportional to fitness (recognition accuracy).
+    - Mutation: Bit-flip mutation with a small probability (qM = 0.05).
+    - Crossover: Stage-level crossover with probability (qC = 0.2).
+  - Fitness Function: Recognition accuracy on a validation subset of CIFAR-10.
+  - Initialization: Random binary strings or all-zero initialization; both converged to similar results after a few generations.
+  - Training: Each CNN evaluated independently via a full training process.
+
+### Relevance of the paper:
+- Demonstrates a genetic algorithm approach to neural architecture search (NAS), a direct precursor to modern evolutionary architecture optimization for deep models.
+- The encoding and mutation strategies for discrete architectural components are highly applicable to evolving Transformer or LLM structures, where components like attention heads, blocks, or feedforward submodules can be similarly encoded and evolved.
+- Highlights transferability of evolved architectures across datasets — relevant for evolving generalizable LLM structures for tasks like summarization and classification.
+- The binary representation, population evolution, and fitness-driven selection framework align closely with the methodology for evolutionary LLM design.
+
+### Summary:
+The Genetic CNN framework automates deep network design by evolving architectures encoded as binary strings using a genetic algorithm. The approach discovers efficient, high-performing CNN structures that generalize across datasets, outperforming manually designed baselines. Though computationally heavy, it effectively demonstrates the power of evolutionary computation for neural architecture optimization. The paper provides a clear foundation for extending GA-based evolution toward Transformer and LLM architectures, where modular design and performance-driven evolution can yield optimized architectures for downstream tasks.
+
+# https://www.sciencedirect.com/science/article/pii/S1568494623007755?casa_token=kpUN2YuhH2IAAAAA:uMdtLRjhceMhmhyb8AA7Nwwq2qDW1dwGY9pvXLnr3gEP3FOeFRz1xB0QHsyJ9a8-jckynUHfVU4 - Multiobjective evolutionary pruning of Deep Neural Networks with Transfer Learning for improving their performance and robustness
+
+### Task:
+The paper introduces MO-EvoPruneDeepTL, a multi-objective evolutionary algorithm designed to prune deep neural networks.  
+Its main goal is to evolve sparse layers in pre-trained networks (via transfer learning) to optimize three objectives simultaneously:
+1. Performance
+2. Model complexity
+3. Robustness
+
+The approach applies evolutionary pruning to the last fully connected layers of pre-trained models (ResNet-50 feature extractors) across several datasets including CATARACT, LEAVES, PAINTING, PLANTS, RPS, and SRSMAS.
+
+### Performance:
+- MO-EvoPruneDeepTL achieved better performance and robustness compared to standard pruning methods (weight-based and neuron-based pruning).  
+- Across datasets:
+  - Accuracy improvement up to +30% compared to neuron-based pruning at the same compression levels.
+  - Robustness measured via AUROC remained stable or improved even under heavy pruning.
+- The algorithm produced Pareto fronts showing diverse trade-offs between accuracy, complexity, and robustness.
+- Ensembles of Pareto-optimal models improved overall robustness and accuracy beyond any single model.
+
+### Requirements:
+- Implementation: Python 3.6 using Keras/TensorFlow.
+- Hardware: Tesla V100 GPU used for all experiments.
+- Each experiment:
+  - Population size = 30 individuals
+  - 200 evaluations (max)
+  - 10 independent runs
+- Computation time per dataset:
+  - CATARACT: 5.5 hours
+  - LEAVES/PAINTING: ~28 hours
+  - PLANTS/RPS: ~13–15 hours
+  - SRSMAS: ~25 hours
+- Each OoD evaluation (robustness test) adds 1–5 minutes depending on dataset size.
+- Uses ResNet-50 as pre-trained feature extractor with 2048-dimensional output.
+
+### What they use:
+- NSGA-II (Non-dominated Sorting Genetic Algorithm II)
+  - Encoding: Binary vector where each gene indicates whether a neuron is active (1) or pruned (0).
+  - Crossover: Uniform crossover between two parents.
+  - Mutation: Bit-flip mutation with rate 1/P.
+  - Selection: Binary tournament and Pareto dominance ranking.
+- Objectives optimized:
+  - Maximize accuracy (In-Distribution classification)
+  - Minimize network complexity (fraction of active neurons)
+  - Maximize robustness (OoD AUROC)
+- Transfer Learning: Uses pre-trained convolutional layers (ResNet-50) with fine-tuned dense layers.
+- OoD Detection: Implemented with ODIN, using temperature-scaled softmax scores for AUROC-based robustness evaluation.
+- Representation: Sparse fully-connected layers evolved as adjacency matrices defining neuron connectivity.
+
+### Relevance of the paper:
+- It applies evolutionary computation to optimize neural architectures while maintaining high task performance.
+- Introduces a multi-objective evolutionary framework for pruning and robustness, applicable to LLM fine-tuning and compression.
+- The approach of using binary evolutionary representations for neural structure pruning can be extended to evolving attention heads, layers, or token embeddings in Transformer/LLM models.
+- Shows practical implementation of Pareto-based evolutionary search to balance multiple LLM performance metrics such as accuracy, interpretability, and computational efficiency.
+
+### Summary and Important Details:
+- MO-EvoPruneDeepTL evolves sparse neural layers using NSGA-II to achieve a balance between accuracy, simplicity, and robustness.
+- It leverages transfer learning to focus evolution only on high-level layers, saving computation while improving specialization.
+- Robustness to Out-of-Distribution data is explicitly included as an objective—uncommon in pruning studies.
+- The method provides Pareto fronts of models, allowing the selection of architectures optimized for specific trade-offs.
+- Ensembles of evolved pruned models show further improvements, supporting diversity as a desirable property in evolutionary LLM optimization.
+
+In the context of Transformer/LLM research, the concepts of multi-objective pruning, robustness-aware evolution, and sparse connectivity search directly translate into efficient, interpretable, and stable large-model evolution strategies.
+
+
+# https://dl.acm.org/doi/abs/10.1145/3712256.3726449 - Guiding Evolutionary AutoEncoder Training with Activation-Based Pruning Operators
+
+### Task:
+The paper introduces new pruning operators to improve the efficiency and performance of autoencoder training guided by evolutionary computation.  
+The goal is to explore how activation-based pruning can enhance both traditional single autoencoder training and a spatial coevolutionary autoencoder framework (Lipi-AE-S).  
+The study introduces two activation-based mutation operators (Variance and Conjunctive) and evaluates their performance against a Random baseline under different pruning schedules.
+
+### Performance:
+- For canonical autoencoder training:
+  - The Conjunctive operator with an exponential pruning schedule achieved the best overall performance, preserving model accuracy while reducing size.
+- For the spatial coevolutionary Lipi-AE-S framework:
+  - The Random operator combined with an exponential pruning schedule performed best, even outperforming canonical approaches in out-of-sample loss.
+- The study found that pruning schedules that apply pruning more frequently toward the end of training (exponential or final-n) yielded the highest stability and performance.
+- Metrics used included out-of-sample reconstruction loss and preserved percentage (remaining parameters after pruning).
+
+### Requirements:
+- Implemented using Python with moderate computational resources.
+- Experiments conducted with support from a university supercomputing center (UMA HPC).
+- Computation time and hardware details are not the main focus but align with small to medium-scale neural architectures.
+- Population-based coevolution runs are lightweight enough to be executed on standard academic hardware.
+
+### What they use:
+- Pruning Operators:
+  - Random: uniformly prunes connections without using activation information.
+  - Variance: computes neuron activation variance across training samples and prunes neurons with low variance.
+  - Conjunctive: uses similarity between activation patterns across samples to prune redundant neurons.
+- Pruning Schedules Tested:
+  - Fixed-interval
+  - Linear
+  - Exponential (pruning probability increases later in training)
+  - Final-n (pruning occurs only at the end)
+- Frameworks Evaluated:
+  - Canonical Autoencoder Training: single autoencoder trained with periodic pruning.
+  - Lipi-AE-S: spatial coevolutionary autoencoder framework with multiple interacting populations (encoders and decoders evolved in a ring topology).
+- Evaluation Metrics:
+  - Out-of-sample reconstruction loss.
+  - Preserved percentage (model compression ratio).
+
+### Relevance of the paper:
+- Provides a systematic comparison of pruning operators and schedules within an evolutionary framework.
+- Offers key insights for incorporating activation-based heuristics into evolutionary neural network optimization.
+- Though focused on autoencoders, the activation-driven and schedule-based pruning methods can be directly adapted to evolving Transformer or LLM architectures.
+- Highlights that exponential or delayed pruning schedules maintain accuracy better than early aggressive pruning.
+- Demonstrates the potential of integrating coevolutionary strategies for robust architecture evolution.
+
+
+
+
+
+
+
+
+
+
 
 
 #
