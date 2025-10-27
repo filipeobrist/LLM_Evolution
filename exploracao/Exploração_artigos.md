@@ -1647,6 +1647,269 @@ The use of LLMs as evaluators and guides marks a significant advancement in evol
 For your thesis, this work demonstrates how evolutionary–LLM synergy can yield efficient, high-performing architectures—an approach that could be extended to LLM architecture optimization for text summarization or classification.
 
 
+# https://arxiv.org/abs/2207.13955 - Neural Architecture Search on Efficient Transformers and Beyond
+### Task:
+The paper introduces a framework for using Neural Architecture Search (NAS) to automatically design efficient Transformer architectures.  
+The objective is to balance accuracy and computational efficiency by optimizing the architecture of efficient Transformers (like cosFormer) and introducing a new mixed-attention mechanism that combines Softmax and linear attention.  
+Tasks include machine translation (WMT’14 En-De) and image classification (CIFAR-10).
+
+### Performance:
+- Machine Translation (WMT’14 En-De):
+  - mFormer (mixed attention) achieves BLEU = 25.79 with 18% fewer parameters and FLOPS compared to standard Transformers.  
+  - Comparable accuracy to Transformer (BLEU = 28.34) while being more efficient.  
+
+- Image Classification (CIFAR-10):
+  - mFormer achieves 93.59% accuracy with 8.39 GFLOPs and 19.31M parameters.  
+  - Comparable to Transformer (95.10%) but with 23% fewer FLOPS.  
+  - Outperforms cosFormer (88.4%) by 5.19%.  
+
+The mixed-attention Transformer (mFormer) successfully balances accuracy and computational cost, outperforming purely linear or Softmax attention variants.
+
+### Requirements:
+- Hardware: NVIDIA A100 GPU used for all experiments.  
+- Software: PyTorch-based RankNAS framework.  
+- Datasets: WMT’14 En-De (machine translation) and CIFAR-10 (image classification).  
+- Training setup: Adam optimizer, inverse square root and cosine learning rate schedulers, 200K update steps for translation, 140K for classification.  
+- Linear attention not used in decoder layers due to instability (BLEU collapse to 0).
+
+### What they use:
+- Search Algorithm: RankNAS (pairwise ranking + hardware-aware pruning).  
+- Search Space: Includes layer number, embedding size, FFN dimension, head number, and new attention type (Softmax vs linear).  
+- Attention Mechanism: Introduces mixed attention (mFormer) — each layer automatically decides whether to use Softmax or linear attention.  
+- Optimization Targets: Accuracy vs FLOPS trade-off.  
+- Core Methods:
+  - Pairwise ranking for architecture evaluation.  
+  - Search space pruning for efficiency.  
+  - Mixed-attention feature integrated directly into NAS search space.  
+  - Evaluation on translation (BLEU) and classification (accuracy).  
+
+### Relevance of the paper:
+- It directly applies NAS to optimize Transformer architecture.  
+- It explores evolution-inspired search mechanisms (through RankNAS and feature ranking).  
+- It proposes attention-type evolution, allowing architecture-level adaptation of attention mechanisms—closely related to your focus on using evolutionary computation to evolve Transformer/LLM architectures.  
+- Demonstrates how architecture search can yield efficient Transformers for tasks like classification and translation.
+
+### Small resume and important details:
+This paper pioneers NAS for efficient Transformers, using RankNAS to evolve both structural parameters and attention types.  
+It shows that linear attention alone improves efficiency but reduces accuracy, while Softmax maintains accuracy but increases cost.  
+The hybrid mFormer architecture, discovered through NAS, integrates both attentions for optimal trade-offs.  
+The mixed attention search space concept is highly valuable — it shows how evolutionary search can guide architectural hybridization (e.g., evolving different attention mechanisms within an LLM).  
+The methodology could be directly adapted to LLM summarization or classification tasks, where balancing performance and efficiency is critical.
+
+# https://arxiv.org/abs/2503.10869 - Evaluating a Novel Neuroevolution and Neural Architecture Search System
+
+### Task:
+The paper introduces Neuvo NAS+, a Python-based framework that merges Neuroevolution and Neural Architecture Search (NAS) for task-specific neural network optimization.  
+Its main goal is to automatically evolve both the architecture and training hyperparameters (like batch size, optimizer, epochs) for binary classification tasks, avoiding manual tuning and improving both accuracy and efficiency.
+
+### Performance:
+- Tested on four binary classification datasets: Heart Disease, Pima Diabetes, Sonar (Mines vs Rocks), and Breast Cancer Wisconsin (Diagnostic).  
+- Achieved the highest F1-scores across most datasets, outperforming baselines including Naive Bayes, C4.5, SVM, KNN, and a standard ANN.  
+- F1-scores:  
+  - Heart: 0.566  
+  - Pima: 0.656  
+  - Sonar: 0.729  
+  - WBCD: 0.920  
+- Execution time:  
+  - Pima: 23.5s average training  
+  - Heart: 3.6s  
+  - WBCD: 9.1s  
+  - Sonar: 13.6s  
+- Demonstrated strong diversity in evolved architectures and task-specific adaptability.
+
+### Requirements:
+- Frameworks: Implemented in Python using Keras and TensorFlow.  
+- Hardware: Runs efficiently on standard CPUs (no explicit GPU requirement mentioned).  
+- GA Configuration:  
+  - Population = 25  
+  - Generations = 200  
+  - Crossover = 77%  
+  - Mutation rate = 0.1%  
+  - Elitism = top 2 individuals preserved each generation.  
+- Designed to be lightweight enough for edge and low-resource environments.
+
+### What they use:
+- Genetic Algorithm (GA)-based Neuroevolution.  
+- Genotype Encoding:  
+  - 8 genes define each network (hidden layers, neurons/layer, activation functions, optimizer, epochs, batch size).  
+  - Search space ≈ 68.8 million possible architectures.  
+- Selection Mechanism: Tournament selection (best for performance), with Roulette Wheel as an alternative.  
+- Crossover: One-point crossover; 77% rate ensures structural variety.  
+- Mutation: 1% per generation, never affecting the fittest network.  
+- Fitness Function: F-measure (F1 score) on test data.  
+- Neural Network Base: Built using Keras Sequential API.  
+- Special features:  
+  - Task-specific evolution of both architecture and training hyperparameters.  
+  - Automatic optimization of optimizer type, batch size, and activation functions per dataset.  
+  - Integration of epochs and batch size as evolvable genes, improving efficiency and reducing wasted computation.
+
+### Relevance of the paper:
+- It applies evolutionary computation to evolve neural architectures and training configurations.  
+- Demonstrates automatic architecture discovery and hyperparameter co-evolution, directly aligning with the goal of improving Transformer/LLM architectures using EC.  
+- Highlights task-specific adaptation and lightweight evolution, concepts transferable to LLM fine-tuning and specialization (e.g., for summarization/classification).  
+- Although applied to smaller ANNs, the underlying principles—co-evolving structure and learning dynamics—can scale to LLM architectural optimization.
+
+### Summary and Important Details:
+- Co-evolution of architecture and hyperparameters, which could be adapted for evolving Transformer modules.  
+- Task specialization through dataset-aware architecture evolution.  
+- Inclusion of learning parameters (epochs, optimizer, batch size) in the evolutionary genome — potentially useful for evolving efficient fine-tuning strategies in LLMs.
+
+# https://proceedings.neurips.cc/paper_files/paper/2023/hash/184c1e18d00d7752805324da48ad25be-Abstract-Conference.html?ref=hungdu.com - EvoPrompting: Language Models for Code-Level Neural Architecture Search
+
+### Task:
+The paper proposes EvoPrompting, a hybrid evolutionary + LLM-based NAS (Neural Architecture Search) method.  
+The task is to use language models (LMs) as mutation and crossover operators to automatically design deep learning architectures, represented as Python code, that optimize both accuracy and model size.  
+Applications include CNN architecture search (on MNIST-1D) and GNN design (on CLRS algorithmic reasoning benchmarks).
+
+### Performance:
+- MNIST-1D results:  
+  EvoPrompting produced CNNs that outperformed human-designed architectures and naive few-shot prompting baselines.  
+  - Smaller models achieved lower test error and improved sample efficiency.  
+  - Pareto frontiers show superior trade-offs between accuracy and model size.  
+
+- CLRS benchmark (graph neural networks):  
+  - Discovered 5 new GNN variants (e.g., QUADNODEMINMAX, CONCATREP, DIV2MEAN).  
+  - Outperformed state-of-the-art Triplet-GMPNN on 21 out of 30 reasoning tasks.  
+  - Improved OOD (out-of-distribution) accuracy by up to 125% on specific algorithms (e.g., Heapsort), often while reducing model size.  
+
+- Efficiency:  
+  Evaluated ~1600 architectures per experiment, with 10 evolutionary rounds.  
+  High sample efficiency compared to standard NAS, avoiding trillions of evaluations.
+
+### Requirements:
+- Base LLM: 62B parameter PaLM model, pre-trained on 1.3T tokens (web + code) and fine-tuned on 64B tokens of Python code.  
+- Hardware: Single NVIDIA Tesla P100 GPU used for training candidate models (8k steps for MNIST-1D, 2k for CLRS).  
+- Compute: 10 evolutionary rounds, 10 prompts per round, 16 candidates per prompt (≈1600 architectures total).  
+- Training details:  
+  - Optimizer: AdamW  
+  - Prompt-tuning: 5 epochs per round, soft prompt length = 16, batch size = 16, learning rate = 0.1  
+
+### What they use:
+- Evolutionary framework:  
+  Uses the LLM itself as adaptive mutation and crossover operators.  
+  - Mutation: LLM modifies architecture code snippets based on in-context examples.  
+  - Crossover: LLM merges features from multiple parent models via few-shot code prompts.  
+
+- Prompt evolution:  
+  - In each generation, the fittest models are used as examples to guide future LLM generations.  
+  - Prompts are evolved and prompt-tuned across generations, improving the LLM’s ability to generate fit architectures.  
+
+- Fitness function:  
+  Fitness = –(validation error × model size), penalizing large or inaccurate models.  
+  Models exceeding an error threshold α = 0.5 are discarded.  
+
+- Meta-learning process:  
+  1. Initialize population with seed models.  
+  2. Generate offspring via LLM-based crossover/mutation.  
+  3. Train and evaluate offspring.  
+  4. Select top performers and fine-tune the LLM on these results.  
+  5. Repeat across 10 evolutionary rounds.  
+
+- Novel architectures discovered:  
+  - QUADNODEMINMAX: quadruplet-based node aggregation (min–max subtraction).  
+  - CONCATREP: concatenated node/edge representations.  
+  - DIV2MEAN: scaled mean aggregation instead of max pooling.  
+  - TANHEXPANDTRIPLETS: hyperbolic expansion in triplet embeddings.
+
+### Relevance of the paper:
+- It explicitly uses evolutionary computation integrated with LLMs for neural architecture optimization.  
+- The LLM acts as a variation operator, evolving architectures written in code.  
+- Demonstrates meta-learning through iterative prompt evolution — a clear method to improve Transformer/LLM architectures via EC.  
+- Offers strategies for reducing compute costs while maintaining diversity and performance (e.g., prompt-tuned mutation instead of gradient-based search).  
+
+These principles could be directly adapted for evolving Transformer-based LLMs used in summarization or classification tasks.
+
+### Small resume and important details:
+- The use of an LLM as the evolutionary operator (a mutation/crossover mechanism).  
+- Prompt evolution and prompt-tuning as a low-cost adaptation strategy.  
+- Fitness-based meta-learning to iteratively improve the architecture generation process.  
+- Demonstrated generalization to different model families (CNNs, GNNs) — suggesting it could extend to Transformers and LLMs.
+
+# https://www.sciencedirect.com/science/article/pii/S156849462300145X?casa_token=gmh5BKCOtToAAAAA:WnhDDRqwdhXycnFvt7EASGpxl5yNhi8gVPaoOMqA5UEh4QNQALWs1IKRycYZU0tDohLZGz0G_VA - A Self-adaptive neuroevolution approach to constructing Deep Neural Network architectures across different types
+
+### Task:
+A Self-adaptive NeuroEvolution (SANE) proposes a unified, type-free neuroevolution framework that automatically constructs lightweight DNN architectures across different model families (CNN, GAN, LSTM). The goals are (1) to provide a single search space and set of evolution operators that apply to multiple DNN types, (2) to keep discovered architectures near-minimal in scale by constructive growth, and (3) to reduce search cost by self-adapting exploration/exploitation and using early stopping for fitness estimation.
+
+### Performance:
+- SANE successfully evolved CNNs, GANs and LSTMs that match or approach existing architectures while having smaller scale. Example reported results (from the paper’s benchmarks):  
+  - Evolved CNN: 1.35M params, CIFAR-10 accuracy 91.80% (≈0.81 day/GPU).  
+  - Evolved GAN: 0.75M params, MNIST FID 15.86 (≈0.67 day/GPU).  
+  - Evolved LSTM: 6.58M params, MovingMNIST BCE loss 0.0700 (≈1.36 day/GPU).  
+- All SANE experiments require modest compute compared with many NAS methods: authors report full experiments taking less than ~2.5 days/GPU on one RTX 3090. The constructive growth and self-adaptive controls substantially reduce wasted evaluations.
+
+### Requirements:
+- Hardware used in experiments: single-GPU (NVIDIA RTX 3090, 24 GB) experimental setup; reported timings measured in day/GPU.  
+- Software: standard deep learning stack (experiments presented in PyTorch/TensorFlow style descriptions).  
+- Typical EA settings reported in the paper: population sizes and per-generation offspring adjustments are dynamically controlled by SANE (see What they use). Computational cost per full experiment varies by DNN type but is explicitly reported as sub-multi-day runs on the RTX 3090.
+
+### What they use:
+- Type-free search space: a unifying representation of DNNs built from three primitives — cell (core + affiliated modules), organ (groups of cells with a role), and connection rules — enabling the same encoding to express CNN, GAN, and LSTM families.
+
+- Constructive, cell-centered EA: individuals start with minimal required modules and only grow (add/modify cells) when evolution indicates fitness improvement. This keeps architectures near-minimal.
+
+- Speciation: a NEAT-inspired speciation scheme protects novel structures by restricting selection competition within species, preserving diversity and preventing premature convergence.
+- Self-adaptive search adjustment mechanism: two adaptive controls — Mutation Time per Generation (TpG) and Offspring Number per Individual (NpI) — are increased or reset based on whether best fitness improves, allowing SANE to shift between deeper exploitation and wider exploration automatically.
+- Performance estimation: an early-stop training mechanism (incomplete training → threshold test → full training only for promising individuals) to reduce fitness evaluation cost. Selection then samples within species to form the next generation.
+- Operators: mutation (add/modify cell, change kernel, add affiliated module), crossover, and the constructive growth rules; full algorithm flow is given as Algorithm 2 in the paper.
+
+### Relevance of the paper:
+Rationale: SANE directly addresses automated architecture construction with evolutionary computation across Transformer-like modular architectures’ analogues (cells/organs), uses constructive growth to keep models small (important for inference-cost tradeoffs), and provides concrete, low-cost mechanisms (self-adaptive controls + early stopping) that are highly transferable to evolving Transformer/LLM substructures (e.g., layer counts, head counts, per-layer widths, selective pruning). Although the experiments target CNN/GAN/LSTM, the type-free search space and the adaptive evolutionary controls are conceptually and practically useful for evolving Transformer/LLM architectures for summarization and classification. 
+
+# https://www.nature.com/articles/s41598-023-42931-3 - Evolutionary neural architecture search combining multi-branch ConvNet and improved transformer
+
+### Task:
+The paper proposes a hybrid evolutionary NAS framework that automatically constructs deep neural network architectures by combining a multi-branch convolutional network (MBB) with an improved Transformer module.  
+The main goal is to enhance classification accuracy, computational efficiency, and robustness across different datasets by evolving architectures that merge the local feature extraction of CNNs with the global modeling capabilities of Transformers.
+
+### Performance:
+- Datasets: CIFAR-10, CIFAR-100, GTSRB, NEU-CLS.  
+- Results:
+  - CIFAR-10: 97.24% accuracy, 1.46 GPU-days, 4.73M parameters.  
+  - CIFAR-100: 80.06% accuracy, 1.53 GPU-days, 5.71M parameters.  
+  - GTSRB: 99.61% accuracy, outperforming CNN ensembles and human benchmarks.  
+  - NEU-CLS: 99.44% accuracy, competitive with NAS-SDC-B and SOTA architectures.  
+- Outperforms DenseNet, ResNet, and DARTS in both accuracy and efficiency.  
+- Demonstrates faster convergence and lower computational cost than traditional NAS frameworks.
+
+### Requirements:
+- Hardware: Single NVIDIA RTX 3090 GPU (24GB VRAM).  
+- Software: Implemented using Python, PyTorch framework.  
+- Training setup:  
+  - Evolution runs for multiple generations with asynchronous GPU fitness evaluation.  
+  - Learning rate scheduling with MixUp and CutOut data augmentation.  
+- Compute efficiency: Average search time < 1.6 GPU-days per dataset.  
+- Designed for practical scalability on mid-tier GPUs.
+
+### What they use:
+- Evolutionary Neural Architecture Search (ENAS) Framework:  
+  - Uses variable-length genome encoding to represent neural network architectures.  
+  - Population initialized with random configurations of convolutional and Transformer blocks.  
+  - Crossover and mutation operations evolve architectures toward optimal performance.  
+  - Fitness evaluation based on validation accuracy and model size trade-off.
+
+- Multi-Branch Block (MBB):  
+  - Combines multiple convolutional branches with varied kernel sizes and depths to capture diverse local features.  
+  - Encourages feature richness and reduces overfitting.
+
+- Batch-Free Normalization Transformer Block (BFNTBlock):  
+  - Integrates Batch-Free Normalization (BFN) with Transformer self-attention layers.  
+  - Mitigates batch-size instability and enhances generalization.  
+  - Captures both global dependencies (via attention) and local patterns (via convolution).
+
+- Evolutionary Process:
+  1. Generate an initial population of architectures.  
+  2. Train each candidate for a limited number of epochs (partial training).  
+  3. Evaluate fitness using validation accuracy.  
+  4. Apply crossover and mutation to produce new architectures.  
+  5. Continue until convergence, selecting the Pareto-optimal architectures.
+
+### Relevance of the paper:
+- It applies evolutionary computation to improve Transformer-based architectures by combining CNN local modules with Transformer attention mechanisms.  
+- Demonstrates how EC can discover hybrid designs that outperform manually crafted architectures in accuracy and efficiency.  
+- Introduces Batch-Free Normalization and multi-branch diversity, both valuable strategies for improving LLM or Transformer model robustness and inference cost.  
+- The variable-length encoding and asynchronous evaluation techniques are directly applicable to evolving large-scale LLMs for tasks like summarization and classification.
+
+
 
 #
 ### Task:
