@@ -1242,13 +1242,409 @@ The study introduces two activation-based mutation operators (Variance and Conju
 - Demonstrates the potential of integrating coevolutionary strategies for robust architecture evolution.
 
 
+# https://ojs.aaai.org/index.php/AAAI/article/view/28993 - EG-NAS: Neural Architecture Search with Fast Evolutionary Exploration
+
+### Task:
+The paper proposes a hybrid Neural Architecture Search (NAS) method that combines gradient-based optimization with evolutionary computation.  
+The goal is to improve search efficiency and avoid local optima, a common issue in differentiable NAS (like DARTS).  
+EG-NAS achieves this by alternating between gradient descent for efficient parameter optimization and an evolutionary strategy (CMA-ES) for global exploration of architectural parameters.
+
+### Performance:
+- Datasets: CIFAR-10, CIFAR-100, ImageNet, NAS-Bench-201.
+- Results:
+  - CIFAR-10: 2.53% test error (0.1 GPU-Days, outperforming DARTS and GDAS).
+  - ImageNet: 24.9% top-1 error with only 0.1 GPU-Days (25.6% when searched directly on ImageNet).
+  - NAS-Bench-201: 93.56% (CIFAR-10), 70.91% (CIFAR-100), 46.13% (ImageNet16-120).
+- Search efficiency: approximately 4× faster than DARTS.
+- Demonstrates high stability, robustness to initialization, and better generalization across datasets.
+
+### Requirements:
+- Implemented in PyTorch.
+- Hardware: single GPU setup, low computational cost (0.1 GPU-Days).
+- Search settings:
+  - Population size λ = 5–10 (in CMA-ES evolution).
+  - Alternates between gradient updates and evolutionary optimization.
+  - Each candidate architecture is partially trained before evaluation.
+- Practical: can be replicated on mid-range GPUs without large-scale resources.
+
+### What they use:
+- Hybrid Search Algorithm:
+  - Combines gradient-based optimization (DARTS) with evolutionary computation (CMA-ES).
+- Evolutionary Component:
+  - CMA-ES used to explore architectural parameters and prevent premature convergence.
+  - Population-based sampling of architectures.
+  - Mutation and selection driven by a compound fitness function.
+- Fitness Function:
+  - Combines cross-entropy loss (L1) for accuracy and cosine similarity (L2) for diversity.
+  - Balances exploration and exploitation: encourages diversity when performance stagnates.
+- Optimization Strategy:
+  - Alternates between gradient-based updates (fine-tuning) and evolution-based updates (diversity).
+  - Ensures efficient local search guided by gradients and global search guided by evolution.
 
 
+### Relevance of the paper:
+- Demonstrates a hybrid gradient-evolution framework for optimizing neural architectures.
+- Shows how evolutionary computation can complement gradient-based training in large-scale models like Transformers or LLMs.
+- The use of CMA-ES for architecture evolution parallels methods applicable to evolving LLM structural parameters.
+- The compound fitness balancing accuracy and diversity could directly inform multi-objective optimization in LLM summarization and classification tasks.
+- Provides a scalable, efficient blueprint for integrating EC algorithms with deep learning architecture search—particularly valuable for Transformer evolution research.
 
 
+# https://openreview.net/forum?id=3YWElIrU8a#discussion - EG-ENAS: Efficient and Generalizable Evolutionary Neural Architecture Search for Image Classification
+
+### Task:
+The paper proposes an efficient and scalable framework for neural architecture search (NAS) that improves both speed and generalization.  
+The goal is to optimize deep network architectures through an evolutionary algorithm combined with gradient-based optimization, enabling rapid convergence while maintaining diversity in the search space.  
+EG-ENAS aims to solve two key challenges in NAS: the high computational cost and the limited transferability of evolved architectures across datasets.
+
+### Performance:
+- Datasets: CIFAR-10, CIFAR-100, and ImageNet.
+- Results:
+  - CIFAR-10: 2.39% test error (state-of-the-art at the time).
+  - CIFAR-100: 16.48% test error.
+  - ImageNet: 24.7% top-1 error, 7.9% top-5 error with 4.6M parameters.
+- EG-ENAS achieved superior accuracy and 2–3× faster search compared to traditional reinforcement learning (RL)-based NAS methods.
+- Search time: less than 0.2 GPU-Days on CIFAR-10.
+- Demonstrated high generalization ability—architectures found on CIFAR-10 transferred effectively to ImageNet.
+
+### Requirements:
+- Framework: implemented in PyTorch.
+- Hardware: single GPU setup (e.g., RTX 2080 or similar).
+- Computational cost: approximately 0.2 GPU-Days per search.
+- Population size: 20 individuals, evolved over 50 generations.
+- Each candidate model trained for 150 epochs before fitness evaluation.
+- Requires moderate resources compared to large-scale NAS methods.
+
+### What they use:
+- Evolutionary Algorithm:
+  - Core approach integrates Evolutionary Strategies (ES) with Differentiable NAS (DARTS)-style gradient descent.
+  - Evolution controls architecture parameters, while gradient updates refine network weights.
+  - Uses a hybrid optimization loop alternating between evolution-based exploration and gradient-based exploitation.
+- Fitness Evaluation:
+  - Combines model accuracy (validation accuracy) and efficiency metrics (parameter count, FLOPs).
+  - Fitness is multi-objective, balancing accuracy and computational efficiency.
+- Evolutionary Operators:
+  - Mutation: modifies architectural connections or layer types.
+  - Crossover: exchanges substructures between parent architectures.
+  - Selection: tournament selection prioritizing diverse, high-performing individuals.
+- Search Space:
+  - Based on cell structures similar to NASNet and DARTS.
+  - Includes convolution types (normal/reduction), skip connections, and pooling layers.
+- Generalization Mechanism:
+  - Incorporates knowledge inheritance—reusing trained weights from previous generations to accelerate convergence.
+
+### Relevance of the paper:
+- Focus on using evolutionary computation to optimize Transformer/LLM architectures.
+- Demonstrates a hybrid EC + gradient framework, which mirrors the approach I might adopt for evolving LLMs for summarization and classification.
+- The multi-objective fitness evaluation balancing accuracy and efficiency directly parallels LLM challenges (balancing performance and inference cost).
+- The knowledge inheritance mechanism offers a potential approach for evolving LLM architectures efficiently by reusing pre-trained components.
+- The modular, cell-based search design could easily be adapted to Transformer blocks.
+
+### Summary:
+EG-ENAS introduces a fast, generalizable evolutionary neural architecture search framework that combines evolutionary strategies with gradient optimization.  
+It achieves state-of-the-art accuracy with drastically reduced computational cost, maintaining strong cross-dataset generalization.  
+The paper’s hybrid EC approach, multi-objective fitness design, and parameter-sharing mechanism make it a key reference for evolutionary optimization of Transformer and LLM architectures.
 
 
+# https://direct.mit.edu/evco/article/28/1/141/94990/Evolution-of-Deep-Convolutional-Neural-Networks - Evolution of Deep Convolutional Neural Networks Using Cartesian Genetic Programming
 
+### Task:
+Automatically design and optimize Convolutional Neural Network (CNN) architectures for image classification tasks (CIFAR-10 and CIFAR-100) using an evolutionary approach.
+
+### Performance:
+Achieved competitive performance with state-of-the-art CNNs.  
+- CIFAR-10: 5.01% best error rate (ResSet variant), outperforming MetaQNN, Genetic CNN, and CoDeepNEAT.  
+- CIFAR-100: 25.1% best error rate (ResSet variant), close to manually designed ResNet and FractalNet models.  
+Achieved good balance between accuracy and model size with lower computational cost.
+
+### Requirements:
+- Hardware: Two NVIDIA GeForce GTX 1080 / 1080 Ti GPUs.  
+- Runtime: 30–31 GPU days for full search; significantly less with early termination and rich initialization (down to ~12 days).  
+- Software: Implemented using Chainer framework.  
+- Data: CIFAR-10 and CIFAR-100 datasets.
+
+### What they use:
+- Evolutionary algorithm: Cartesian Genetic Programming (CGP) combined with a (1+λ) Evolution Strategy (λ = 2).  
+- Network representation: Direct encoding as a directed acyclic graph.  
+- Modules: High-level CNN blocks (ConvBlock, ResBlock, pooling, concatenation, summation).  
+- Speed-up techniques:
+  - Rich Initialization: Using modified ResNet or DenseNet structures as initial architectures.
+  - Early Termination: Stops unpromising network training early based on a reference curve.
+- Optimization: Stochastic Gradient Descent (SGD) with Adam for training CNN weights.
+
+### Relevance of the paper:
+Highly relevant for evolutionary computation applied to neural architecture search (NAS).  
+The use of CGP to evolve CNN architectures with modular blocks is conceptually transferable to evolving LLM architectures.  
+The efficiency techniques (rich initialization, early termination) are directly applicable to reducing LLM search costs.
+
+# https://www.researchgate.net/publication/2724952_Pruning_Neural_Nets_by_Genetic_Algorithm - Pruning Neural Nets by Genetic Algorithm
+This study pioneers pruning neural networks using genetic algorithms by evolving binary connection masks on pre-trained networks.  
+The process improves generalization and test accuracy while significantly reducing model complexity.  
+A notable innovation is the gradual randomization approach, where initially pre-trained weights are incrementally replaced with random ones during evolution to create networks that can learn effectively from scratch.  
+Although computationally intensive, this method demonstrates that GAs can efficiently discover pruned architectures with superior generalization—laying the groundwork for later evolutionary pruning, neural compression, and structural optimization methods used today.
+
+
+# https://arxiv.org/abs/1803.03635 - THE LOTTERY TICKET HYPOTHESIS: FINDING SPARSE, TRAINABLE NEURAL NETWORKS
+
+### Task:
+The paper investigates whether large neural networks contain smaller subnetworks that, when trained in isolation, can match the original model’s performance.  
+The hypothesis suggests that within every dense, randomly-initialized network, there exist “winning tickets” — subnetworks that can be trained from their original initialization to achieve test accuracy comparable to the full network.
+
+### Performance:
+- Experiments performed on MNIST, CIFAR-10, and ImageNet using fully connected and convolutional architectures.
+- Key findings:
+  - Pruned subnetworks (winning tickets) trained from their original initialization reach equal or higher accuracy than the original dense network.
+  - Training the same subnetworks from new random initializations results in significantly worse performance, highlighting the importance of the initial weights.
+  - On CIFAR-10, pruned ResNet and VGG models trained 2–3× faster than dense counterparts while achieving similar accuracy.
+  - On MNIST, networks could be pruned by up to 90–95% without performance loss.
+- Winning tickets were found to require fewer training iterations and generalize as well or better than the original models.
+
+### Requirements:
+- Framework: TensorFlow and PyTorch implementations available.
+- Hardware: GPU training required for larger datasets (CIFAR-10, ImageNet).
+- Training setup:
+  - Optimizer: SGD with momentum or Adam.
+  - Iterative pruning schedule: prune 20% of smallest-magnitude weights per iteration, retrain from original initialization.
+  - Total pruning ratio: up to 95%.
+- Compute cost: moderate (iterative pruning requires multiple retrainings).
+
+
+### What they use:
+- Pruning Algorithm: Iterative Magnitude Pruning (IMP)
+  - Step 1: Train the dense model to convergence.
+  - Step 2: Prune a fixed percentage (p%) of smallest-magnitude weights.
+  - Step 3: Reset remaining weights to their initial values.
+  - Step 4: Retrain the pruned subnetwork.
+  - Step 5: Repeat until reaching the desired sparsity level.
+- Key Idea:
+  - The initialization of the winning ticket is crucial—when retrained from random initialization, performance drops dramatically.
+- Extensions:
+  - Explored the role of learning rate warmup and rewinding techniques to accelerate training and improve stability.
+
+### Relevance of the paper:
+- Highly relevant to evolutionary model compression and pruning.
+- Demonstrates that large networks contain small, efficient subnetworks—providing a conceptual foundation for evolutionary search for sparse architectures in Transformers and LLMs.
+- The iterative pruning approach and importance of initialization align well with EC frameworks, where subnetworks can be evolved rather than manually selected.
+- Offers empirical evidence that sparsity and initialization synergy can yield smaller, faster models without losing performance—useful for EC-driven LLM optimization.
+
+
+### Summary and Important Details:
+This paper introduces the Lottery Ticket Hypothesis, showing that within dense neural networks exist smaller subnetworks (“winning tickets”) that can train effectively when initialized correctly.  
+Using iterative magnitude pruning, these subnetworks achieve similar or better performance than their full models at a fraction of the size.  
+The study provides strong support for the idea that efficient and high-performing subarchitectures can be discovered through search—whether via pruning, evolutionary computation, or hybrid methods.  
+For Transformer and LLM optimization, this implies that evolutionary algorithms could search for “winning subnetworks” that are smaller, faster, and equally effective for summarization or classification.
+
+# https://proceedings.mlr.press/v80/falkner18a.html - BOHB: Robust and Efficient Hyperparameter Optimization at Scale
+
+### Task:
+The paper presents BOHB, a scalable and efficient method for hyperparameter optimization that combines the strengths of Bayesian Optimization (BO) and Hyperband.  
+The main goal is to accelerate the process of finding optimal configurations (hyperparameters or architectures) for deep learning models by efficiently allocating resources among promising candidates.
+
+
+### Performance:
+- Datasets and tasks:
+  - Evaluated on several benchmarks including neural network tuning, SVM parameter optimization, and XGBoost configurations.
+  - Outperformed random search, TPE, and Hyperband in both accuracy and speed.
+- Results:
+  - BOHB achieves state-of-the-art performance with 1–2 orders of magnitude fewer resources than standard Bayesian Optimization.
+  - Shows stable performance across heterogeneous tasks.
+  - Demonstrates effective scaling to hundreds of parallel workers without loss of performance or consistency.
+- Efficiency:
+  - Reduces computation time by combining cheap exploratory runs with selective, high-fidelity evaluations.
+  - Adapts dynamically to the complexity of the search space.
+
+### Requirements:
+- Framework: Implemented in Python using the `HpBandSter` library.
+- Hardware: Scalable to clusters or multi-GPU setups.
+- Compute:
+  - Can run with as few as 1 worker or scale up to 100+ in distributed environments.
+  - Resource allocation managed dynamically by Hyperband’s early-stopping mechanism.
+- Software dependencies: scikit-learn, numpy, and optional PyTorch/TensorFlow for deep learning tasks.
+
+
+### What they use:
+- Hybrid Algorithm: BO + Hyperband
+  - Bayesian Optimization (BO): Provides model-based search to guide exploration toward promising configurations using kernel density estimators.
+  - Hyperband: Efficiently allocates resources using multi-fidelity optimization; evaluates many configurations with small budgets and progressively allocates more to top performers.
+  - BOHB workflow:
+    1. Start with random configurations.
+    2. Use low-budget evaluations to explore large search space.
+    3. Update surrogate models with BO to predict promising candidates.
+    4. Allocate additional resources (epochs, samples, etc.) via Hyperband scheduling.
+    5. Iterate until resource or accuracy convergence.
+- Core innovation: Bayesian sampling integrated with Hyperband’s successive halving ensures both *exploration* (diversity) and *exploitation* (efficiency).
+
+### Relevance of the paper:
+- Directly applicable to hyperparameter optimization in EC-LLM training pipelines.
+- Demonstrates how multi-fidelity and probabilistic search can be combined for efficient training—useful for reducing computational cost in evolving Transformer/LLM architectures.
+- While not an evolutionary algorithm per se, the adaptive resource allocation and Bayesian guidance principles align closely with EC’s exploration–exploitation balance.
+- Provides a framework that can complement EC approaches in large-scale, population-based training scenarios.
+
+# https://www.jmlr.org/papers/v18/16-558.html - Hyperband: A Novel Bandit-Based Approach to Hyperparameter Optimization
+
+### Task:
+The paper proposes Hyperband, a resource allocation algorithm designed to speed up hyperparameter optimization.  
+The method formulates the search as a multi-armed bandit problem, where each "arm" corresponds to a hyperparameter configuration.  
+The key goal is to efficiently allocate computational resources by quickly discarding poorly performing configurations while dedicating more time to promising ones.
+
+### Performance:
+- Datasets/Tasks: Applied to deep neural networks, convolutional architectures, and SVM tuning benchmarks.
+- Results:
+  - Achieved up to 100× faster search than random and Bayesian optimization for comparable performance.
+  - Outperformed Bayesian Optimization (TPE, SMAC) in both tuning speed and final accuracy.
+  - Found optimal hyperparameters in hours instead of days on deep learning tasks.
+- Efficiency:
+  - Uses a simple, parameter-free mechanism that adapts resource allocation dynamically.
+  - Demonstrates robust performance across tasks and datasets.
+
+### Requirements:
+- Framework: Implemented in Python (simple to integrate with existing ML pipelines).
+- Hardware: Standard GPU setup for deep models; scalable to clusters.
+- Resources:
+  - Runs multiple models with different training budgets (e.g., number of epochs or data subsets).
+  - Effective even on single-GPU setups.
+- No prior performance model or Bayesian inference required—only random sampling and early stopping.
+
+### What they use:
+- Hyperband
+  - Combines Successive Halving (SH) with random sampling.
+  - Successive Halving (SH):
+    - Trains n configurations with a small budget.
+    - Retains the top 1/η fraction of configurations.
+    - Allocates a larger budget to survivors and repeats until the maximum budget is used.
+  - Hyperband:
+    - Runs multiple SH processes with different configurations and resource allocations.
+    - Balances exploration (many small trials) and exploitation (fewer, more trained trials).
+  - No model-based search—entirely data-driven, parameter-free.
+- Key Parameters:
+  - R = maximum resource per configuration (e.g., epochs, dataset size).
+  - η = proportion of configurations retained per round (commonly η = 3).
+
+### Relevance of the paper:
+- Relevant to resource-efficient EC/LLM optimization.
+- Hyperband’s adaptive resource allocation can complement evolutionary search by assigning more computation to promising evolved architectures.
+- Provides an efficient scheduling backbone for population-based or multi-objective EC frameworks.
+- The Successive Halving mechanism could be integrated into EC-driven Transformer training to dynamically prune weaker architectures during evolution.
+
+# https://proceedings.mlr.press/v202/dushatskiy23a.html - Multi-Objective Population Based Training
+
+### Task:
+The paper extends Population-Based Training (PBT) to optimize models across multiple conflicting objectives simultaneously.  
+The goal is to evolve neural networks that balance trade-offs such as accuracy vs fairness, accuracy vs robustness, or precision vs recall, producing a diverse set of Pareto-optimal solutions rather than a single best model.
+
+### Performance:
+- MO-PBT outperforms baselines like Random Search, standard (single-objective) PBT, and MO-ASHA.
+- Produces higher-quality Pareto fronts with better hypervolume scores, indicating improved trade-off optimization.
+- Demonstrated strong scalability with larger populations and more complex search spaces.
+- Experiments show consistent improvements across diverse tasks and datasets such as CIFAR-10, CIFAR-100, CelebA, Adult, Higgs, and Click Prediction.
+
+### Requirements:
+- Hardware: GPU-enabled setup (authors used NVIDIA A5000 GPUs).  
+- Frameworks: Implemented using Ray Tune and PyTorch.  
+- Population setup: Multiple models trained in parallel, each with evolving hyperparameters (e.g., learning rate, dropout, weight decay, fairness coefficient λ).  
+- Applicable to tasks with at least two conflicting objectives.
+
+### What they use:
+- Algorithm: Multi-Objective Population-Based Training (MO-PBT)
+  - Builds on standard PBT’s exploit-and-explore mechanism but adds multi-objective optimization using Pareto dominance.
+  - Uses domination-based sorting inspired by NSGA-II to rank individuals.
+  - Incorporates greedy scattered subset selection to maintain diversity along the Pareto front.
+  - Applies exploit-and-explore steps where low-performing individuals copy high-performing ones with small perturbations.
+  - Measures optimization progress via the hypervolume metric, ensuring better coverage of the Pareto frontier.
+- Comparisons and Baselines:
+  - Evaluated against MO-ASHA, BO-MO-ASHA, and scalarization-based methods.
+  - Consistently achieved better Pareto front diversity and robustness.
+
+### Relevance of the paper:
+- Demonstrates how population-based evolutionary algorithms can efficiently balance multiple competing objectives.
+- Offers a strong foundation for evolving LLM architectures that optimize both performance and efficiency (e.g., summarization accuracy vs inference cost).
+- The integration of Pareto-based ranking and population exploration aligns closely with evolutionary strategies for multi-objective model optimization.
+- The scalable and distributed training approach is directly transferable to large-scale Transformer optimization.
+
+### Summary and Important Details:
+MO-PBT is a powerful multi-objective extension of Population-Based Training that evolves neural networks by balancing several performance metrics at once.  
+It leverages evolutionary mechanisms like dominance ranking, diversity preservation, and local perturbations to explore complex trade-offs efficiently.  
+The method achieves robust and generalizable Pareto fronts while remaining scalable and easy to implement.  
+For your research, MO-PBT provides a clear path for applying multi-objective evolutionary search to LLM fine-tuning, summarization, and classification tasks where accuracy, efficiency, and robustness must be optimized jointly.
+
+# https://arxiv.org/abs/2504.17827 - Evolution Meets Diffusion: Efficient Neural Architecture Generation
+
+### Task:
+The paper introduces Evolutionary Diffusion-based Neural Architecture Generation (EDNAG), a hybrid framework combining diffusion models and evolutionary algorithms for efficient and network-free neural architecture generation. The goal is to overcome the computational and local optimality issues of standard diffusion-based Neural Architecture Generation (NAG) and Neural Architecture Search (NAS), particularly for large search spaces like Transformer or Vision Transformer architectures.
+
+### Performance:
+EDNAG achieves state-of-the-art (SOTA) results across multiple benchmarks:
+- Up to 10.45% improvement in accuracy over baselines.
+- 50× faster inference compared to diffusion-based methods like DiffusionNAG.
+- Competitive accuracy on NAS-Bench-201, TransNASBench-101, MobileNetV3, DARTS, and AutoFormer search spaces.
+- Performance close to or exceeding global best results across tasks such as classification, segmentation, and reconstruction.
+
+### Requirements:
+- GPU recommended (experiments use NVIDIA RTX 4090 and Tesla V100-SXM2).
+- Implemented with PyTorch; compatible with benchmarks like NAS-Bench-201 and AutoFormer.
+- Requires a fitness predictor network for architecture evaluation (shared with DiffusionNAG).
+- No retraining or backpropagation during architecture generation, reducing GPU hours to near zero.
+
+### What they use:
+- Evolutionary Algorithm (EA) replaces the diffusion model’s denoising network.
+- Introduces a Fitness-Guided Denoising (FD) strategy: uses architecture fitness to iteratively evolve candidate solutions.
+- Combines elitism, diversity preservation, and roulette-wheel selection to balance exploration and exploitation.
+- Uses a transferable neural predictor with coreset-based dataset encoding for fitness evaluation.
+- Based on Denoising Diffusion Implicit Model (DDIM) equations but replaces neural noise predictors with evolutionary operators.
+
+### Relevance of the paper:
+Integrates evolutionary computation to optimize Transformer/LLM architectures. It demonstrates a network-free generative process that merges diffusion modeling and evolution, offering a blueprint for creating efficient and scalable evolutionary mechanisms for LLM architecture optimization. The fitness-guided approach is especially relevant for summarization and classification tasks where balancing performance and efficiency is critical.
+
+### Additional details:
+- Significantly reduces training time and GPU cost compared to NAS or diffusion-based methods.
+- Adaptable across small and large-scale search spaces, including AutoFormer for Transformer models.
+- Future directions include replacing neural predictors with evaluation-free (zero-cost proxy) methods for even faster generation.
+
+
+# https://www.sciencedirect.com/science/article/pii/S1568494625005903?casa_token=WP4jg7GJYs4AAAAA:3w11F-_HIPe--1PwntqSOsBBpeoJNwPi_rj_3M82ywBQGXsCJkcVSyGAZhhkCEgmVYhNEVqAIv4 - Multi-objective evolutionary neural architecture search for medical image analysis using transformer and large language models in advancing public health
+
+### Task:
+The paper presents a hybrid evolutionary framework combining Transformers, LLMs, and multi-objective neural architecture search (NAS) for optimizing medical image segmentation models.  
+
+The goal is to automatically design models that achieve high segmentation accuracy while maintaining computational efficiency, enabling practical deployment in public health and clinical screening systems.
+
+### Performance:
+- Dataset: ISIC 2020 (skin lesion segmentation).  
+- Results:  
+  - TransMed-NAS-S: Dice = 0.934, Params = 0.82M, FPS = 28.4  
+  - TransMed-NAS-M: Dice = 0.941, Params = 1.15M, FPS = 25.2  
+  - TransMed-NAS-L: Dice = 0.947, Params = 1.54M, FPS = 22.8  
+- Comparison: Outperforms MCRformer (Dice = 0.939) while reducing NAS time by 76.8%.  
+- Achieves SOTA segmentation accuracy with significantly lower computation through LLM-guided surrogate modeling and weight entanglement mechanisms.
+
+### Requirements:
+- Hardware: NVIDIA RTX 2080 Ti GPU (11GB VRAM), Intel Xeon E5-2640 v4 CPU, 128GB RAM.  
+- Software: TensorFlow 2.4.1, CUDA 11.1.  
+- Compute cost: Reduced from 384 GPU-hours (traditional NAS) to 89 GPU-hours through LLM-guided surrogate modeling.  
+- Datasets: Public ISIC 2020 segmentation benchmark.  
+
+### What they use:
+- Evolutionary Algorithm: Multi-objective NSGA-III, optimizing both accuracy and inference speed.  
+- LLM Integration:  
+  - Guides architecture generation, channel selection, and relevance weighting.  
+  - Encodes domain knowledge to bias search toward clinically meaningful features.  
+- Transformer Backbone: Used for contextual feature extraction and spatial modeling in segmentation.  
+- Optimization Techniques:  
+  - *Hierarchical Channel Selection*: Selects the most informative channels dynamically.  
+  - *Weight Entanglement Mechanism*: Reuses parameters across evolved architectures to reduce retraining cost.  
+  - *Surrogate Model Acceleration*: Uses an LLM-enhanced random forest to predict architecture performance without full training.  
+  - *Dynamic Surrogate Evolution*: Alternates between offline and online surrogate updates during search.
+
+### Relevance of the paper:
+- Combines evolutionary search with LLM-guided decision-making, offering a scalable, efficient way to evolve model architectures.  
+- Demonstrates the synergy between multi-objective EC (accuracy vs cost) and LLM-informed evaluation.  
+- Provides strong methodological insights for adapting similar techniques to Transformer evolution for summarization and classification tasks.
+
+### Summary and Important Details:
+TransMed-NAS presents a powerful integration of LLMs, evolutionary algorithms, and Transformers to automate model design for medical image segmentation.  
+Its hybrid NAS approach achieves top-tier segmentation accuracy while drastically reducing computational expense via LLM-guided surrogate modeling and weight entanglement.  
+The use of LLMs as evaluators and guides marks a significant advancement in evolutionary computation applied to neural architecture search.  
+For your thesis, this work demonstrates how evolutionary–LLM synergy can yield efficient, high-performing architectures—an approach that could be extended to LLM architecture optimization for text summarization or classification.
 
 
 
