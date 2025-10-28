@@ -1910,13 +1910,36 @@ The main goal is to enhance classification accuracy, computational efficiency, a
 - The variable-length encoding and asynchronous evaluation techniques are directly applicable to evolving large-scale LLMs for tasks like summarization and classification.
 
 
+# OPTIONS
 
-#
-### Task:
-### Performance:
-### Requirements:
-### What they use:
-### Relevance of the paper:
+## 1. Evolutionary Neural Architecture Search for Transformer in Knowledge Tracing
+## 2. EvoPress: Accurate Dynamic Model Compression via Evolutionary Search
+## 3. EG-NAS: Neural Architecture Search with Fast Evolutionary Exploration OR EG-ENAS: Efficient and Generalizable Evolutionary Neural Architecture Search for Image Classification
+## 4. The Evolved Transformer - A more classic NAS implementation
+## 5. RZ-NAS: Enhancing LLM-guided Neural Architecture Search via Reflective Zero-Cost Strategy. A more advanced LLM-NAS co-evolution. Use LLM as mutation operator etc
+
+| # | Method | Concept Summary | Performance Rank | Computation Cost | Ease of Implementation | Overall Rank | Comments & Suitability |
+|---|---------|-----------------|------------------|------------------|------------------------|---------------|-------------------------|
+| **1** | **Evolutionary Neural Architecture Search for Transformer in Knowledge Tracing (EvoKT)** | Custom multi-objective GA designed to evolve Transformer architectures for educational prediction. Optimizes both accuracy and model size. | **3rd** | ★★★☆☆ (Moderate) | ★★★★☆ | **2nd Overall** | Very relevant and balanced. Evolves number of layers, attention heads, FFN dimensions, etc. Code easily adaptable for text summarization/classification Transformers. |
+| **2** | **EvoPress: Accurate Dynamic Model Compression via Evolutionary Search** | Focuses on evolutionary **pruning and compression** rather than structure evolution. Achieves high accuracy retention while reducing model size and inference time. | **4th** | ★★☆☆☆ (Low–Medium)** | ★★★☆☆ | **4th Overall** | Excellent for fine-tuning phase or applying EC after architecture evolution. Could be combined with EvoKT or EG-ENAS to compress the final evolved model. |
+| **3** | **EG-NAS / EG-ENAS (Hybrid Evolution + Gradient Search)** | Hybrid method combining Evolutionary Search with Gradient Descent. Optimizes architecture and weights jointly with high efficiency. | **1st** | ★★☆☆☆ (Low–Moderate)** | ★★★★☆ | **1st Overall** | Top performance-to-cost ratio. Robust NAS framework proven on image tasks but easily adaptable to Transformers. Great starting base for your project with limited GPUs. |
+| **4** | **The Evolved Transformer (Google Brain, 2019)** | Classic large-scale NAS that discovered new Transformer architectures using massive compute (AmoebaNet + NASNet style). | **2nd** | ★★★★★ (Extremely High)** | ★☆☆☆☆ | **5th Overall** | Historically influential but impractical for single-PC setups. Still valuable conceptually — you can reuse its discovered architecture patterns but not the full search. |
+| **5** | **RZ-NAS (Reflective Zero-Cost LLM-Guided NAS)** | State-of-the-art NAS that integrates LLMs as reflection agents guiding mutation and evaluation, using zero-cost proxies to avoid heavy training. | **1st–2nd (tie)** | ★☆☆☆☆ (Very Low Cost, thanks to zero-cost proxies)** | ★★☆☆☆ (Complex LLM integration)** | **3rd Overall** | Highly innovative and closest to your thesis vision (EC + LLM co-evolution). Excellent for future work once a base EC-NAS system (like EG-NAS or EvoKT) is in place. |
+
+
+1. The Evolved Transformer - To computationally heavy.
+2. EvoPress - Focuses on evolutionary pruning and compression.
+3. RZ-NAS - LLM-guided NAS. É o melhor em termos de computational cost e também semi de resultados, mas não sei se não é demasiado complexo para mim. Pode-se contudo extrair a idea de zero-proxies: prune many bad candidates before expensive evaluation
+4. EvoKT - multi-objective evolutionary NAS. Não é o que tem os melhores resultados parece, mas suficientemente bons e parece mais facil de implementar/transferir.
+5. EG-NAS / EG-ENAS (Hybrid Evolution + Gradient Search) - Usado em image tasking. Obteve os melhores resultados e tem um computational cost low-moderate. A unica coisa que me deixa mais preocupado é de ser tao recente (publicado em setembro 2025). Mas já usam algumas coisas como o zero-cost proxies, partial training, transfer learning, weight inheritance, etc.
+NVIDIA A100 GPU
 
 
 
+## Other implementations/interesting ideas: 
+- Early stopping: saved computational cost by cutting training to the models who dont perform that good in the first x trainings
+- “Aging” mechanism discards the oldest individuals, promoting exploration and diversity.
+- Combine One-shot Super-net — the survey explicitly describes this combination as an efficient workflow: train one supernet (weight-entanglement/entangled superweight) and use evolutionary search to select subnets.
+- Use progressive / budgeted evaluation — Evolved Transformer and Primer used staged/limited training to reduce per-candidate cost.
+- Apply zero-cost proxies first (TF-TAS) to prune many bad candidates before expensive evaluation.
+- If hardware is a constraint, make the search hardware-aware (HAT) — include latency/target-device cost in the fitness/loss.
