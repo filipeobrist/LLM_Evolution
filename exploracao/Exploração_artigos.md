@@ -1943,3 +1943,26 @@ NVIDIA A100 GPU
 - Use progressive / budgeted evaluation — Evolved Transformer and Primer used staged/limited training to reduce per-candidate cost.
 - Apply zero-cost proxies first (TF-TAS) to prune many bad candidates before expensive evaluation.
 - If hardware is a constraint, make the search hardware-aware (HAT) — include latency/target-device cost in the fitness/loss.
+
+
+# https://arxiv.org/abs/2403.07035 - Multiple Population Alternate Evolution Neural Architecture Search
+
+### Task:
+MPAE (Multiple Population Alternate Evolution) proposes an alternative NAS paradigm that splits a large global search space into L smaller sub-spaces (one per layer/block) and assigns one evolutionary population to each sub-space. Populations are evolved alternately (layer-by-layer), sampling complete subnetworks by selecting one individual from each population and inheriting weights from a shared supernet. A migration/archive mechanism shares promising individuals across neighboring populations to accelerate convergence and preserve useful structural motifs.
+
+### Performance:
+- On CIFAR-10 / CIFAR-100 the paper reports competitive or state-of-the-art results among scalable NAS methods while using very low search cost (~0.3 GPU-days). MPAE variants (A/B/C) reach e.g. 97.35–97.51% on CIFAR-10 and up to 84.12% on CIFAR-100 with only 0.3 GPU-days search time. It also transfers reasonably to ImageNet (top-1 accuracies in tables) with low search cost.
+
+### Requirements:
+- A supernet (one-shot weight-sharing) implementation to sample and evaluate subnetworks.  
+- Typical EA hyperparameters used in the paper: L = number of layers (example L=20), population per layer N (e.g. 64), crossover/mutation rates ~0.25, warmup supernet training for a few epochs, alternate evolution cycles, multi-objective selection (Pareto).  
+- Hardware: authors measured ~0.3 GPU-days for CIFAR searches (they used GPUs like A100 for transfer training). The method is explicitly designed to be low-cost compared to global NAS.
+
+### What they use:
+- Multi-population alternate evolution: partition search space into L subsets (one per layer/block) and have L populations evolve alternately.  
+- Supernet weight-sharing: sample full architectures by selecting one individual from every population; use weight-sharing so sampled subnetworks inherit supernet weights and can be evaluated cheaply.  
+- Migration archive: an immigrant archive per population; migration selection depends on layer adjacency and gene similarity to balance diversity and knowledge transfer.  
+- Genetic operators: crossover and mutation on binary encoding of operations (cell-level, DARTS-like cell search space). Multi-objective (accuracy vs param count/FLOPs) environmental selection.
+
+### Relevance of the paper:
+Rationale: keeping search diverse (module heterogeneity) while lowering compute cost. Its multi-population idea and migration mechanism are a natural fit for evolving heterogeneous populations (different model families coexisting per layer/module) if we adapt supernet and genotype designs. The paper provides an efficient, low-cost base extendable to mixed-family NAS.
