@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from .block import TransformerBlock, DecoderBlock
+from .transformer_block import TransformerBlock, DecoderBlock
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=2048):
@@ -18,22 +18,27 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, :x.size(1), :]
 
 class TransformerModel(nn.Module):
-    def __init__(self, vocab_size, embed_dim=256, n_layers_enc=4, n_layers_dec=4,
-                 n_heads=4, ff_multiplier=4.0, dropout=0.1, max_len=512):
+    def __init__(self, vocab_size, embed_dim, n_heads, ff_multiplier, n_layers_enc, n_layers_dec, dropout=0.1, activation="gelu"):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, embed_dim)
-        self.pos_enc = PositionalEncoding(embed_dim, max_len=max_len)
-        self.encoder = nn.ModuleList([
-            TransformerBlock(embed_dim, n_heads, ff_multiplier, dropout)
-            for _ in range(n_layers_enc)
-        ])
-        self.decoder = nn.ModuleList([
-            DecoderBlock(embed_dim, n_heads, ff_multiplier, dropout)
-            for _ in range(n_layers_dec)
-        ])
-        self.ln_enc = nn.LayerNorm(embed_dim)
-        self.ln_dec = nn.LayerNorm(embed_dim)
-        self.output_head = nn.Linear(embed_dim, vocab_size)
+        self.pos_enc = PositionalEncoding(embed_dim, dropout)
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embed_dim,
+            nhead=n_heads,
+            dim_feedforward=embed_dim * ff_multiplier,
+            dropout=dropout,
+            activation=activation
+        )
+        self.decoder_layer = nn.TransformerDecoderLayer(
+            d_model=embed_dim,
+            nhead=n_heads,
+            dim_feedforward=embed_dim * ff_multiplier,
+            dropout=dropout,
+            activation=activation
+        )
+        self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=n_layers_enc)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=n_layers_dec)
+        self.out = nn.Linear(embed_dim, vocab_size)
 
     def encode(self, src_ids, src_mask=None):
         x = self.pos_enc(self.embed(src_ids))
