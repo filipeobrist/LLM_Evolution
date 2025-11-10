@@ -1,230 +1,186 @@
-# Project workflow (step-by-step)
+# Plano A: Hybrid architectures
 
-## Overview
-Evolve a mixed population of sequence models (Transformers, KANs, Mamba-2) to discover architectures that balance summarization performance and computational cost, producing pure and hybrid modules via family-aware variation and occasional cross-family recombination.
+## 1. Initial Population Design
+- The initial population contains **pure models** of each family:
+  - Transformers, Mambas, and KANs
+  - Equal counts: \( N_T = N_M = N_K \)
+- Example: population size = **60**
+- Each individual model has:
+  - **Global shared genes:** `d_model`, `depth`, `dropout`, `norm_type`, `context_len`
+  - **Family-specific genes** (depending on the architecture)
+- Each model is composed of **blocks**:
+  - Transformers → Attention + MLP blocks  
+  - Mambas → SSM blocks  
+  - KANs → Group-KAN blocks
 
-## 0. Project setup (prereqs / modules)
-- Code layout (high level)
-  - models/transformer, models/kan, models/mamba (family-specific wrappers and search_space files)
-  - evolution/ (population, operators, selection, loop)
-  - experiments/ (training, evaluation, datasets, decode)
-  - utils/ (adapters, metrics, surrogate, logging)
-- Tooling: PyTorch, sentencepiece/tokenizer, rouge-score, optuna or lightgbm for surrogate
-- Data: small summarization dataset (e.g., CNN/DailyMail subset) for prototyping
-- Dev pratics: small models initially (embed_dim 128/256), multi-fidelity evaluation
+## 2. Genes
 
-## 1. Initialization
-1. Define population size N and mixture ratio r (e.g., N = 24, r = equal thirds → 8 transformers, 8 KANs, 8 Mamba).
-2. Define per-family searchable gene space (discrete choices / ranges).
-   - Transformer genes: embed_dim, n_layers_enc, n_layers_dec, n_heads, ff_multiplier, dropout, max_len. (CAN CHANGE)
-   - KAN genes: embed_dim, n_layers, spline_degree, num_basis, grouping. (CAN CHANGE)
-   - Mamba genes: embed_dim, n_layers, state_dim, selectivity_mode, kernel_type. (CAN CHANGE)
-3. Randomly sample N individuals from these spaces; each individual is a complete model config (gene + family tag).
-4. Option: initialize a small in-family weight warm-start (pretrain tiny supernet per family or random init) — recommended.
+Each model genome has the following structure:
 
-Deliverable: initial population P0 = {ind_i}.
+```python
+model = {
+  "global": {num_layers, d_model, norm_type, context_len, dropout}, # shared parameters
+  "blocks": [block1, block2, ..., blockN],  # sequence of layer genes
+  "family": "hybrid" or pure type
+}
+```
 
----
+- The Blocks have local parameters wich are the ones specific to each family type:
+  - Transformers: num_heads, d_ff, activation, pos_enc, attn_variant, weight_tie, attn_dropout, resid_dropout
+  - Mamba: d_state, ssm_order, dt_rank, conv_kernel, activation, bias, resid_scale
+  - KAN: k_groups, basis_funcs, basis_order, activation, skip_connection
 
-## 2. Evaluation (fitness function and procedure)
-1. Fitness is multi-objective: primary = summarization quality (e.g., ROUGE-L), secondary = computational cost.
-2. Compute cost metrics:
-   - param_count (weights)
-   - inference_time (tokens/sec on your GPU)
-   - FLOPs (optional)
-3. Scalarized fitness (single objective for selection) or Pareto-based:
-   - Option A (scalarized): fitness = α * normalized(ROUGE) - β * normalized(log(inference_time))
-   - Option B (Pareto): maintain Pareto front of (ROUGE, inference_time)
-   - Choose α, β based on desired trade-off (present both to coordinators)
-4. Multi-fidelity evaluation pipeline (to conserve GPU):
-   - Stage 0: zero-cost proxies (SynFlow, parameter counts) to filter out extremely poor configs.
-   - Stage 1: surrogate predictor (if available) to pre-rank candidates.
-   - Stage 2: short fine-tune (1 epoch or 500 steps) with weight inheritance where applicable → compute validation ROUGE.
-   - Stage 3: successive halving / train-top-k longer (3–5 epochs), only for elites or Pareto front.
-5. Output: evaluated fitness values and compute metrics for each individual.
+## 3. Mutation
+Two levels of mutation:
 
-Deliverable: evaluated population with fitness scores and cost metrics.
+### A. Global Mutations
+- Affect the entire model:
+  - Add/remove layers (±1–3)
+  - Scale model width (d_model)
+  - Adjust dropout, norm_type, or context_len
+  - Slightly perturb learning rate or activation
 
----
+### B. Block Level Mutations
+- Affect individual blocks:
+  - Transformer: change heads, FF width, attention variant, or positional encoding
+  - Mamba: tweak d_state, ssm_order, conv_kernel
+  - KAN: modify basis_order, basis_func, or k_groups
+  - Hybrid: randomly convert one block’s type (e.g., Transformer → Mamba) with probability p_convert = 0.1
 
-## 3. Elitism and archive
-- Keep an elite archive E of top µ_elite individuals (e.g., µ_elite = 4).
-- Keep per-family elite pools and a cross-family elite pool for migration and crossover seeds.
-- Retain Pareto archive if using Pareto selection.
 
-Deliverable: elite set for next gen preservation.
+## 4. Crossover Logic
+- Crossover happens at the gene level.
 
----
+### A. Intra-family (same type)
+```python
+def crossover_same_family(parentA, parentB):
+    child = {}
+    child["global"] = blend(parentA["global"], parentB["global"])
+    child["blocks"] = crossover_blockwise(parentA["blocks"], parentB["blocks"])
+    return child
+```
+- Numeric genes are interpolated: child[g] = α * A[g] + (1 − α) * B[g],  α ∈ [0.3, 0.7]
 
-## 4. Parent selection
-- Use tournament selection (k=3) sampling from current population (or tournament over parents + elites).
-- Selection probability can be based on scalarized fitness or Pareto rank + crowding distance (NSGA-II).
-- Maintain family-awareness for frequent in-family crossover: prefer selecting parents of same family for most crossovers (prob_in_family = 0.9); allow cross-family parent pairs with small probability p_cross = 0.1.
+### B. Cross-family (different types)
+- When two different families cross, the child may become hybrid. p_hybrid=0.25
+- Pseudocode:
+```python
+def crossover_cross_family(parentA, parentB):
+    child = {}
+    child["global"] = blend_globals(parentA, parentB)
 
-Deliverable: parent pairs for crossover.
+    if random.random() < p_hybrid:
+        # Hybrid child — mix blocks
+        splitA = random.randint(1, len(parentA["blocks"]) - 1)
+        splitB = random.randint(1, len(parentB["blocks"]) - 1)
+        child["blocks"] = parentA["blocks"][:splitA] + parentB["blocks"][splitB:]
+        child["family"] = "hybrid"
+    else:
+        # Non-hybrid — choose dominant parent
+        dominant = random.choice(["A", "B"])
+        child["family"] = parentA["family"] if dominant == "A" else parentB["family"]
+        child["blocks"] = copy_blocks(dominant_parent["blocks"])
 
----
+    return child
+```
 
-## 5. Crossover (what can be exchanged)
-Two categories: in-family (straightforward) and cross-family (structured/hybrid).
+- ATTENTION! All blocks must follow this unified interface:
+```python
+def forward(x, mask=None, state=None):
+    # in/out: [batch, seq, d_model]
+    return y, new_state
+```
 
-A. In-family crossover (most common)
-- Transformers ↔ Transformers:
-  - exchange hyperparameters: n_layers_enc, n_layers_dec, n_heads, ff_multiplier.
-  - exchange layer-level motifs (e.g., swap specific encoder layer configs).
-  - exchange trained weights if structural compatibility (weight inheritance).
-- KAN ↔ KAN:
-  - exchange spline_degree, num_basis, grouping, internal modules.
-- Mamba ↔ Mamba:
-  - exchange state_dim, kernel_type, selectivity modes, number of SSM layers.
+- Before model creation, align all blocks to the same d_model
 
-B. Cross-family crossover (rare; produces hybrid offspring)
-- Allowed exchanges (only the items below to ensure compatibility):
-  1. module swap at layer granularity:
-     - embed_dim (common), layer index, and replacement of family-block at same layer position.
-     - e.g., parent A (Transformer) and B (Mamba) → child: Transformer encoder but replace FFN at layer 3 by Mamba block (requires adapter).
-  2. submodule exchange:
-     - feed-forward submodule replacement: replace Transformer FFN with KAN-MLP (KAN representation).
-  3. macro exchange:
-     - encoder stack family ← child uses parent A encoder family, decoder family from parent B (e.g., Transformer encoder & Mamba decoder).
-  4. parameter transfer:
-     - hyperparameter borrowing: child inherits a numerical gene (e.g., embed_dim, ff_multiplier) from one parent and the block type from the other.
-- Cross-family rules:
-  - Only allow crossovers that preserve a common latent dimension (embed_dim) or automatically insert adapters (linear projection + LayerNorm) at connection points.
-  - Limit cross-family crossover probability to avoid untrainable monsters (p_cross ≤ 0.1).
-  - If a hybrid child is generated, set adapter_flag=True in the genotype and reinitialize adapter weights small; optionally, initialize other weights from closest parent where possible.
+## 5. Hybrid Design Constraints
+- To make mixed stacks work:
+  - All blocks must share:
+    - Same d_model
+    - Same normalization type
+    
+  - Unified residual and normalization APIs
+  - Optional state handling for SSM/Mamba blocks
+  - During init: block.init(d_model=child.global["d_model"], norm=child.global["norm_type"]), so we inject our global parameters into the blocks
 
-Deliverable: offspring list after crossover.
+## 6. Fitness Evaluation
+- Balance accuracy and efficiency
+- Ex:. fitness = 0.6 * acc_norm + 0.2 * speed_norm + 0.2 * efficiency_norm
 
----
 
-## 6. Mutation (family-specific + hybrid rules)
-A. Transformer mutation operators
-- change n_heads ±1 (keep valid divisibility)
-- change ff_multiplier ±1 step
-- change n_layers_enc / n_layers_dec ±1
-- toggle dropout levels
-- switch attention variant (softmax, linear, mixed) if implemented
-- small continuous perturbation on embed_dim (to nearest allowed choice)
+## 7. Efficient Training
+- Full training for each model is too costly, so we use proxy-based evaluation and reuse strategies to speed up fitness estimation.
 
-B. KAN mutation operators
-- change spline_degree ±1
-- change num_basis ±8 or ±16
-- change grouping (share functions across channels)
-- add/remove a KAN layer
-- perturb initialization scaling
+### 7.1 Low-Fidelity Training
+- **What it is**: Train candidates for only a few epochs or on a smaller subset of the data.
+- **Purpose**: Quickly estimate performance without full training.
 
-C. Mamba mutation operators
-- change state_dim ± step
-- change selectivity_mode (static↔gated)
-- change kernel_type (diagonalizable, parameterized)
-- add/remove SSM layer
+### 7.2 Zero-Cost Proxies
+- **What it is**: Architecture-only metrics (e.g., SynFlow, SNIP, GraSP) to predict trainability
+- **Purpose**: Identify promising candidates without any training.
 
-D. Hybrid mutation rules (if individual already hybrid)
-- Intra-block mutation applies to each block’s own genes.
-- Adapter mutation: change adapter projection size or dropout.
-- Family-swap mutation (rare): change family tag at a layer and set new family genes from a default seed.
+### 7.3 Weight Inheritance
+- **What it is**: Reuse parent weights for unchanged blocks in the child model.
+- **Purpose**: Reduces training time and leverages previously learned representations.
 
-Mutation probabilities:
-- p_mutation_family = 0.2 (per gene)
-- p_family_swap = 0.05 overall
+### 7.4 Progressive Evaluation
+- **What it is**: Start training with smaller sequence lengths or batch sizes, then scale gradually.
+- **Purpose**: Filter weak models early and save computation.
 
-Deliverable: mutated offspring.
 
----
+## 8. Overall Workflow
+### 1. Initial Population Design
+- Generate a population of pure models: Transformers, Mambas, KANs.
+- Assign global parameters (shared) and local parameters (block-specific).
+- Example population size: 60 (≈20 per family).
 
-## 7. Offspring evaluation & weight inheritance
-- For each offspring:
-  - If offspring is minor in-family mutation of a parent: inherit weights from parent (weight inheritance).
-  - If offspring is hybrid but retains many layer shapes from one parent: inherit matching layer weights and randomly init adapters/new layers.
-  - If offspring is cross-family macro-change: do not inherit incompatible weights (or use distillation/teacher init if feasible).
-- Run multi-fidelity evaluation on offspring (Stage 1–3 pipeline).
-- Store child fitness metrics.
+### 2. Evaluate Initial Population
+- Use efficient training techniques:
+  - Zero-Cost Proxies → quick architecture evaluation
+  - Low-Fidelity Training → few iterations on small data
 
-Deliverable: evaluated offspring with fitness.
+- Compute initial fitness scores balancing accuracy and efficiency.
 
----
+### 3. Parent Selection
+- Tournament selection (e.g., size 3–5): select candidates for reproduction based on fitness.
+- Ensures strong models have higher chance to pass genes while maintaining diversity.
 
-## 8. Next-generation formation
-- Combine elites E + offspring O; perform environmental selection:
-  - Option A scalarized: pick top N by scalarized fitness.
-  - Option B Pareto: run NSGA-II selection to choose next population of size N (maintains diversity).
-- Update per-family elite pools and Pareto archive.
-- Update surrogate model with new evaluated data (for later predictions).
+### 4. Crossover
+- Intra-family: combine genes of same type, numeric genes interpolated.
+- Cross-family: produce hybrid children with probability p_hybrid = 0.25.
+- Children inherit global parameters blended from parents; local parameters per block type.
 
-Deliverable: new population P_{t+1}.
+### 5. Mutation
+- Global mutations: affect model-wide parameters (d_model, depth, dropout, etc.)
+- Block-level mutations: affect family-specific local parameters (num_heads, d_state, k_groups, etc.)
+- Hybrid-specific mutations: random block type conversion with low probability (e.g., 0.1)
 
----
+### 6. Child Evaluation
+- Apply efficient training techniques:
+  - Weight inheritance from parents for unchanged blocks
+  - Progressive evaluation (start with small sequence length / batch size)
+  - Optional zero-cost proxy for rapid scoring
 
-## 9. Repeat & termination
-- Repeat evolution loop for G generations (e.g., G = 20–50) or until budget exhausted (GPU-hours).
-- Periodically (every K generations) fully train top Pareto models for final evaluation.
-- Termination criteria: fixed GPU budget, convergence in Pareto front, or no improvement over M consecutive generations.
+### 7. Fitness Calculation
+- Combine performance and efficiency metrics:
+  - fitness = 0.6 * acc_norm + 0.2 * speed_norm + 0.2 * efficiency_norm
 
-Deliverable: final Pareto set of evolved models (pure or hybrid).
+### 8. Next Generation
+- Keep elite models (top N) to preserve best architectures
+- Replace worst performers with new children
+- Repeat selection → crossover → mutation → evaluation → next generation until stopping criteria (max generations, fitness plateau) 
 
----
-
-## 10. Post-processing & compression
-- For selected final models, apply EvoPress-style evolutionary compression/pruning to further reduce inference cost while preserving ROUGE.
-- Optionally fine-tune pruned models for improved summaries.
-
-Deliverable: compressed deployable models.
-
----
-
-## 11. Logging, reproducibility, and experiments record
-- Save: full genotype, random seeds, training logs, checkpoint (weights), evaluation metrics, FLOPs/time, and full architecture diagrams.
-- Version control: git commit hash, environment.yml, and data splits.
-- Reproducibility run: re-evaluate best 3 models with fixed seeds and report average metrics.
-
----
-
-## 12. Risk mitigation and practical tips (for a single GPU)
-- Use tiny models (embed_dim 128) for search; scale up only for final candidates.
-- Use surrogate predictor + successive halving to avoid wasting compute on bad models.
-- Use weight inheritance aggressively for in-family mutations.
-- Limit cross-family crossover frequency early in search; increase later if hybrids show promise.
-- Start with single-family Transformer-only EA to validate pipeline, then enable KAN/Mamba populations.
-
----
-
-## Appendix A: What can be exchanged across families (concise list)
-- common genes: embed_dim, dropout, layer count (if mapping exists)
-- submodule swap: transformer's FFN ↔ KAN-MLP
-- layer replacement: replace Transformer block with Mamba SSM block at a specific layer index (with adapter)
-- encoder/decoder family swapping (macro-change)
-- hyperparameters (numerical values): state_dim, ff_multiplier, n_heads -> used as hints when converting family types
-
----
-
-## Appendix B: Mutation list (concise)
-- Transformer: n_heads, ff_multiplier, n_layers_enc/dec, attention_type, dropout, activation
-- KAN: spline_degree, num_basis, groups, n_layers, expansion
-- Mamba: state_dim, kernel_type, selectivity_mode, n_layers
-
----
-
-## Appendix C: Example experimental protocol (recommendation for your first run)
-- Population N = 24 (8 per family), µ_elite = 4
-- Generations G = 20, offspring per gen = 20
-- p_cross_family = 0.1, p_family_swap = 0.05
-- Multi-fidelity: 0-proxy → 1-epoch eval → keep top 25% → 3-epoch eval → top 5 full-train
-- Log ROUGE-L and tokens/sec; present Pareto front after each run.
-
----
-
-## Presentation checklist (slides / document)
-- Motivation (mixed families + summarization + compute trade-off)
-- High-level algorithm flowchart (Init → Eval → Select → Crossover → Mutate → NextGen)
-- Family genotypes (tables)
-- Cross-family crossover rules (table + examples)
-- Fitness definition & multi-fidelity pipeline
-- Experimental protocol & compute budget
-- Expected deliverables & timeline
-
----
-
-## Final note (to coordinators)
-This workflow balances experimental ambition (mixed-family / hybrid modules) and feasibility (single GPU) by combining family-aware operators, weight inheritance, and multi-fidelity evaluation. It yields interpretable hybrids and a Pareto front of models, ready for downstream compression and deployment.
-
+## FLow Chart From Chatgpt
+```mermaid
+flowchart TD
+    A[Initial Population] --> B[Evaluate Initial Population]
+    B --> C[Tournament Selection]
+    C --> D[Crossover]
+    D --> E[Mutation]
+    E --> F[Child Evaluation]
+    F --> G[Fitness Calculation]
+    G --> H[Next Generation]
+    H --> C
+    B -->|Zero-Cost Proxies / Low-Fidelity| F
+    F -->|Weight Inheritance / Progressive Eval| G
+```

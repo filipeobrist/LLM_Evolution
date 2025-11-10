@@ -22,7 +22,6 @@ model = TransformerModel(
     n_layers_enc=gene["n_layers_enc"],
     n_layers_dec=gene["n_layers_dec"],
     dropout=gene["dropout"],
-    activation=gene["activation"],
 )
 
 # Dummy data
