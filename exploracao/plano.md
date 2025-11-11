@@ -26,9 +26,9 @@ model = {
 ```
 
 - The Blocks have local parameters wich are the ones specific to each family type:
-  - Transformers: num_heads, d_ff, activation, pos_enc, attn_variant, weight_tie, attn_dropout, resid_dropout
+  - Transformers: num_heads, d_ff, activation, pos_enc, attn_variant, weight_tie, (attn_dropout, resid_dropout) - I will combine this into a global dropout parameter
   - Mamba: d_state, ssm_order, dt_rank, conv_kernel, activation, bias, resid_scale
-  - KAN: k_groups, basis_funcs, basis_order, activation, skip_connection
+  - KAN: k_groups, basis_funcs, spline_order, activation, skip_connection
 
 ## 3. Mutation
 Two levels of mutation:
@@ -59,7 +59,7 @@ def crossover_same_family(parentA, parentB):
     child["blocks"] = crossover_blockwise(parentA["blocks"], parentB["blocks"])
     return child
 ```
-- Numeric genes are interpolated: child[g] = α * A[g] + (1 − α) * B[g],  α ∈ [0.3, 0.7]
+- Numeric genes are interpolated if floats: child[g] = α * A[g] + (1 − α) * B[g],  α ∈ [0.3, 0.7]
 
 ### B. Cross-family (different types)
 - When two different families cross, the child may become hybrid. p_hybrid=0.25
@@ -76,7 +76,7 @@ def crossover_cross_family(parentA, parentB):
         child["blocks"] = parentA["blocks"][:splitA] + parentB["blocks"][splitB:]
         child["family"] = "hybrid"
     else:
-        # Non-hybrid — choose dominant parent
+        # Non-hybrid — choose dominant parent. May need to work on this logic
         dominant = random.choice(["A", "B"])
         child["family"] = parentA["family"] if dominant == "A" else parentB["family"]
         child["blocks"] = copy_blocks(dominant_parent["blocks"])

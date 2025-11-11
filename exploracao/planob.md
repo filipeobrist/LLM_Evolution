@@ -7,8 +7,8 @@
 
 ## 2. Genes
 - **Transformer:**
-  - Depth (int): *num_layers*, 6-64
-  - Hidden size (int): *d_model*, 256-4096
+  - Depth (int): *num_layers*, 2-8
+  - Hidden size (int): *d_model*, 128-512
   - Attention heads (int and must divide d_model): *num_heads*, 4-64
   - FFN inner dim (int): *d_ff*, 4*-8*d_model
   - MLP activation (cat): *activation*,  {gelu, swiglu, geglu}
@@ -17,15 +17,15 @@
   - Positional encoding type (cat): *pos_enc*, {rope, alibi, learned}
   - Normalization variant (cat): *norm_type*, {layernorm, rmsnorm}
   - Speed/efficiency form (cat): *attn_variant*, {vanilla, flash, grouped, multiquery}
-  - Sequence length/ Input context (int): *context_len*, 512-32768
+  - Sequence length/ Input context (int): *context_len*, 128-512
   - Share embedding & output weights (bool): *weight_tie*, True/False
 
 - **Mamba:**
   - *num_layers*, *d_model*, *norm_type*, *context_len*, *dropout*
-  - SSM state size (int): *d_state*, 16-512
+  - SSM state size (int): *d_state*, 64-256
   - Order of SSM kernel (int): *ssm_order*, 1-4
   - Rank for Δt parameterization (int): *dt_rank*, 1-64
-  - Local conv pre-filter size (int): *conv_kernel*, 1-15
+  - Local conv pre-filter size (int): *conv_kernel*, 1-10
   - Nonlinearity (cat): *activation*, {silu, gelu}
   - Include bias in state updates (bool): *bias*, True/False
   - Residual scaling (helps deep SSMs) (float): *resid_scale*, 0.5-1
@@ -34,7 +34,7 @@
   - *num_layers*, *d_model*, *norm_type* (just layernorm or none), *context_len*, *dropout*
   - Number of group-KANs (int): *k_groups*, 2-16
   - Basis type (cat): *basis_funcs*, {chebyshev, legendre, bspline, fourier}
-  - Polynomial/trig order per dimension (int): *basis_order*, 2-8
+  - Polynomial/trig order per dimension (int): *spline_order*, 2-8
   - Post-basis nonlinearity (cat): *activation*, {none, relu, silu}
   - Residual skip (bool): *skip_connection*, True/False
 
