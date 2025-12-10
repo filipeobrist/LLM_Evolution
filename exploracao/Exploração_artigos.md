@@ -424,10 +424,10 @@ It achieves higher accuracy with comparable compute, bridging the gap between th
 - Reported performance improvements were in AUC (Area Under Curve), RMSE and Accuracy metrics.
 - The results show that architectures found via EC (Evolutionary Computation) can surpass manually designed ones while using comparable or fewer parameters.
 
-Requirements (GPU,...): 
+### Requirements (GPU,...): 
 - NVIDIA 3080 GPU
 
-What did they use: 
+### What did they use: 
 - ENAS-KT (NAS approach for KT)
 
 ### Relevance of the paper:
@@ -436,7 +436,7 @@ What did they use:
 - provides insights into multi-objective optimization, which is useful if my goal is to balance accuracy vs. efficiency in summarization/classification LLMs.
 
 
-Small resume and important details I might use:
+### Small resume and important details I might use:
 - Introduces a multi-objective evolutionary NAS framework tailored to transformers.
 - Successfully applies it to sequence prediction (Knowledge Tracing), which conceptually aligns with summarization and classification (both sequence-to-sequence or sequence classification tasks).
 - They emphasize local-global fusion — an idea you might adapt by evolving architectures that balance global attention (context understanding for summarization) and local patterns (important for classification).
@@ -1909,6 +1909,25 @@ The main goal is to enhance classification accuracy, computational efficiency, a
 - Introduces Batch-Free Normalization and multi-branch diversity, both valuable strategies for improving LLM or Transformer model robustness and inference cost.  
 - The variable-length encoding and asynchronous evaluation techniques are directly applicable to evolving large-scale LLMs for tasks like summarization and classification.
 
+# Denser - https://link.springer.com/article/10.1007/s10710-018-9339-y
+- GA-level encodes the macro structure of evolution, i.e., the layers, learning, and/or data augmentation methods
+(among others)
+- The DSGE-level specifies the parameters of each GA evolutionary
+unit and the valid range of the parameters
+
+## Representation
+- GA level: Encodes the macro structure of the DNNs.
+A possible GA structure for
+the evolution of CNNs is then: [(features, 1, 10), (classification, 1,
+2), (softmax, 1, 1), (learning, 1, 1)]; the numbers stand for the minimum and maximum number of layers of that type, respectively. The
+previous GA structure is able to encode CNNs with a minimum of 3
+and a maximum of 14 layers: from 1 to 10 convolution and pooling
+(features) layers, followed by 1 or 2 fully-connected (classification)
+layers, and one softmax layer; the learning rule is for encoding the
+learning algorithm and its parameters.
+
+- DSGE level: it is in the DSGE level that the parameters are stored
+
 
 # OPTIONS
 
@@ -1966,3 +1985,5 @@ MPAE (Multiple Population Alternate Evolution) proposes an alternative NAS parad
 
 ### Relevance of the paper:
 Rationale: keeping search diverse (module heterogeneity) while lowering compute cost. Its multi-population idea and migration mechanism are a natural fit for evolving heterogeneous populations (different model families coexisting per layer/module) if we adapt supernet and genotype designs. The paper provides an efficient, low-cost base extendable to mixed-family NAS.
+
+
