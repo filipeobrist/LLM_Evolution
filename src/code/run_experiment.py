@@ -1267,7 +1267,7 @@ class JambaClassifier(torch.nn.Module):
         return self.classifier(pooled)
 
 
-def load_agnews_small(n_train=1000, n_val=500): # Diminui para tentar correr no pc. 127,600 samples existem na ag_news.
+def load_agnews_small(n_train=10000, n_val=5000): # Diminui para tentar correr no pc. 127,600 samples existem na ag_news. No pc -> 1000, 500
     ds = load_dataset("ag_news")
 
     train = ds["train"].shuffle(seed=42).select(range(n_train))
@@ -1276,6 +1276,7 @@ def load_agnews_small(n_train=1000, n_val=500): # Diminui para tentar correr no 
     return train, val
 
 def trainModel(model, tokenizer, train_ds, steps, lr=1e-4, batch_size=1): # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800
+                                                                          # batch_size=1, lr=1e-4, steps=200 ou algo baixo
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     
@@ -1304,6 +1305,31 @@ MAMBA = 0
 ATTN  = 1
 MIN_LAYERS = 4
 MAX_LAYERS = 12
+
+# Evolution parameters
+MUTATION_RATE = 0.15
+POP_SIZE = 30
+GENERATIONS = 20
+ELITISM = 4
+
+
+# PARA CORRER NA MAQUINDA DO DEI
+FINE_TUNE = True
+LEARNING_RATE = 4e-4 # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800
+BATCH_SIZE = 16
+# # Inital hurdle of training
+STEPS_1 = 100
+# # The additional steps we train the best models with
+STEPS_2 = 200
+
+# NO PC
+# FINE_TUNE = False
+# LEARNING_RATE = 1e-4
+# BATCH_SIZE = 1
+# # Inital hurdle of training
+# STEPS_1 = 200
+# # The additional steps we train the best models with
+# STEPS_2 = 400
 
 # Utils
 @torch.no_grad()
@@ -1445,14 +1471,14 @@ def evaluate(base_lm, tokenizer, genotype, train_ds, val_ds, steps, inherited_we
     """
     model = JambaClassifier(copy.deepcopy(base_lm), num_classes=4).to(base_lm.device)
     apply_genotype(model.lm, genotype)
-    setup_model_trainability(model, full_fine_tune=False)
+    setup_model_trainability(model, full_fine_tune=FINE_TUNE)
     
     if inherited_weights is not None:
         model.load_state_dict(inherited_weights, strict=False)
 
     # Training (Hurdle)
-    trainModel(model, tokenizer, train_ds, steps=steps)
-        
+    trainModel(model, tokenizer, train_ds, steps=steps, lr=LEARNING_RATE, batch_size=BATCH_SIZE) # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800 NA MAQUINA DO DEI
+
     # Performance & Latency Evaluation
     f1, latency = eval_performance(model, tokenizer, val_ds)
     total_params = sum(p.numel() for p in model.parameters())
@@ -1480,7 +1506,7 @@ def fitness(population_list):
     for ind in population_list:
         stats = ind['stats']
         
-        # Prémio de Inteligência: F1 ao quadrado para dar um "boost" enorme aos melhores
+        # Prémio de Inteligência: F1 ao quadrado para dar um "boost" aos melhores
         # Se o F1 for muito baixo (ex: < 0.2), a fitness base será quase nula
         base_score = stats['f1'] ** 2
         
@@ -1508,7 +1534,7 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
     # Initial Population
     for _ in range(pop_size):
         g = generate_random_genotype()
-        weights, stats = evaluate(base_model, tokenizer, g, train_ds, val_ds, steps=200)
+        weights, stats = evaluate(base_model, tokenizer, g, train_ds, val_ds, steps=STEPS_1)
         population.append({'genotype': g, 'weights': weights, 'stats': stats})
 
     # Dar fitness
@@ -1539,7 +1565,7 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
                 p2 = tournament_selection(population, k=k)
         
             child_g = crossover(p1['genotype'], p2['genotype'])
-            child_g = mutate(child_g)
+            child_g = mutate(child_g, mutation_rate=MUTATION_RATE)
             
             # Weight Inheritance: Pick weights from the fitter parent
             # Lamarckian Inheritance (full knowledge transfer from one parent)
@@ -1549,7 +1575,7 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
             # HURDLE STEP 1: Fast Evaluation (Short Training)
             # This is the "Hurdle" - we train many, but only keep the best
             weights, stats = evaluate(base_model, tokenizer, child_g, train_ds, val_ds, 
-                                      steps=200, inherited_weights=parent_weights)
+                                      steps=STEPS_1, inherited_weights=parent_weights)
             
             new_candidates.append({'genotype': child_g, 'weights': weights, 'stats': stats})
 
@@ -1565,7 +1591,7 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
         print(f"Gen {gen}: Refining top survivors...")
         for individual in population:
             weights, stats = evaluate(base_model, tokenizer, individual['genotype'], 
-                                                train_ds, val_ds, steps=400, 
+                                                train_ds, val_ds, steps=STEPS_2, 
                                                 inherited_weights=individual['weights'])
             individual['weights'] = weights
             individual['stats'] = stats
@@ -1630,9 +1656,9 @@ def run_thesis_experiment():
         train_ds=train_ds,
         val_ds=val_ds,
         # pop_size and generations adjusted based on compute resources
-        pop_size=20,
-        generations=15,
-        elitism=4
+        pop_size=POP_SIZE,
+        generations=GENERATIONS,
+        elitism=ELITISM
     )
     
     print(f"\nEvolution Complete!")
