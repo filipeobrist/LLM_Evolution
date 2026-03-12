@@ -1243,52 +1243,37 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
-class JambaClassifier(torch.nn.Module):
+# START HERE
+# --- CONSTANTS & CONFIG ---
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+MAMBA, ATTN = 0, 1
+MIN_LAYERS, MAX_LAYERS = 4, 20
+NUM_CLASSES = 4
+MUTATION_RATE = 0.15
+POP_SIZE = 30
+GENERATIONS = 100
+ELITISM = 1
+LEARNING_RATE = 4e-4
+BATCH_SIZE = 16
+STEPS_1, STEPS_2 = 150, 200
+FINE_TUNE = True
+
+
+class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):
         super().__init__()
         self.lm = base_lm
-        
-        # 1. SEGURANÇA NA ENTRADA: Garante que d_model é um inteiro
-        in_features = base_lm.config.d_model
-        if isinstance(in_features, (list, tuple)):
-            in_features = in_features[0]
-            
-        # 2. SEGURANÇA NA SAÍDA: O erro provavelmente vem daqui.
-        # Se passaste o dataset inteiro ou uma lista, extraímos o tamanho.
-        if not isinstance(num_classes, int):
-            # Se for um dataset do Hugging Face, tentamos tirar o num_classes das features
-            try:
-                out_features = num_classes.features['label'].num_classes
-            except:
-                # Se for uma lista/tupla, tiramos o primeiro ou o comprimento
-                out_features = len(num_classes) if isinstance(num_classes, (list, tuple)) else 4
-        else:
-            out_features = num_classes
-
-        # print(f"DEBUG: Criando Linear com in={in_features} e out={out_features}")
-        
-        self.classifier = torch.nn.Linear(
-            int(in_features), int(out_features)
-        )
+        d_model = int(base_lm.config.d_model)
+        self.classifier = nn.Linear(d_model, num_classes)
+        nn.init.xavier_uniform_(self.classifier.weight)
 
     def forward(self, input_ids):
-            # Garante que os input_ids estão no dispositivo correto e são Long para o embedding
-            input_ids = input_ids.to(next(self.parameters()).device).long()
-            
-            # O ERRO está aqui: Se passares input_ids para self.lm.jamba() 
-            # e lá dentro ele fizer operações matemáticas sem passar pelo embedding primeiro, crasha.
-            
-            # MODO SEGURO:
-            # 1. Primeiro transformamos IDs (inteiros) em vetores (floats)
-            x = self.lm.embedding(input_ids) 
-            
-            # 2. Agora sim, x é FLOAT e pode passar pela Jamba/LayerNorm
-            outputs = self.lm.jamba(x) 
-            
-            hidden = self.lm.final_layernorm(outputs[0])
-            pooled = hidden.mean(dim=1)
-            return self.classifier(pooled)
-
+        # Conversão explícita para evitar o erro "Got: Long"
+        x = self.lm.embedding(input_ids) 
+        outputs = self.lm.jamba(x)
+        hidden_states = self.lm.final_layernorm(outputs[0])
+        pooled = hidden_states.mean(dim=1) 
+        return self.classifier(pooled)
 
 def load_agnews(tokenizer, n_train=2000, n_val=500):
     print("Pre-tokenizing dataset...")
@@ -1312,53 +1297,47 @@ def load_agnews(tokenizer, n_train=2000, n_val=500):
     
     return tokenized_train, tokenized_val
 
-def trainModel(model, train_ds, steps, lr=1e-4, batch_size=1):
+def train_model(model, train_ds, steps):
     model.train()
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
+    loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     
-    start_time = time.time() # Início do cronómetro
-    total_loss = 0
+    start_time = time.time()
+    step_count = 0
+    while step_count < steps:
+        for batch in loader:
+            if step_count >= steps: break
+            input_ids, labels = batch["input_ids"].to(DEVICE), batch["label"].to(DEVICE)
+            
+            optimizer.zero_grad()
+            loss = F.cross_entropy(model(input_ids), labels)
+            loss.backward()
+            optimizer.step()
+            step_count += 1
+    return time.time() - start_time
     
-    for i, batch in enumerate(train_loader):
-        if i >= steps: break
-        
-        # Dados já vêm como tensores do DataLoader
-        input_ids = batch["input_ids"].to(next(model.parameters()).device)
-        labels = batch["label"].to(input_ids.device)
-        
-        optimizer.zero_grad()
-        logits = model(input_ids)
-        loss = torch.nn.functional.cross_entropy(logits, labels)
-        loss.backward()
-        optimizer.step()
-        
-        total_loss += loss.item()
-    
-    train_duration = time.time() - start_time # Fim do cronómetro
-    return total_loss / steps, train_duration
+# # Constants
+# MAMBA = 0
+# ATTN  = 1
+# MIN_LAYERS = 4
+# MAX_LAYERS = 20
+# NUM_CLASSES = 4
 
-# Constants
-MAMBA = 0
-ATTN  = 1
-MIN_LAYERS = 4
-MAX_LAYERS = 20
-
-# Evolution parameters
-MUTATION_RATE = 0.15
-POP_SIZE = 30
-GENERATIONS = 100
-ELITISM = 1
+# # Evolution parameters
+# MUTATION_RATE = 0.15
+# POP_SIZE = 30
+# GENERATIONS = 100
+# ELITISM = 1
 
 
-# PARA CORRER NA MAQUINDA DO DEI
-FINE_TUNE = True
-LEARNING_RATE = 4e-4 # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800
-BATCH_SIZE = 16
-# # Inital hurdle of training
-STEPS_1 = 100
-# # The additional steps we train the best models with
-STEPS_2 = 200
+# # PARA CORRER NA MAQUINDA DO DEI
+# FINE_TUNE = True
+# LEARNING_RATE = 4e-4 # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800
+# BATCH_SIZE = 16
+# # # Inital hurdle of training
+# STEPS_1 = 150
+# # # The additional steps we train the best models with
+# STEPS_2 = 200
 
 # NO PC
 # FINE_TUNE = False
@@ -1371,31 +1350,21 @@ STEPS_2 = 200
 
 # Utils
 @torch.no_grad()
-def eval_performance(model, val_ds, n_samples=300):
+def evaluate_model(model, val_ds):
     model.eval()
-    val_subset = val_ds.select(range(min(n_samples, len(val_ds))))
-    val_loader = DataLoader(val_subset, batch_size=16)
+    loader = DataLoader(val_ds, batch_size=1)
+    all_preds, all_labels, latencies = [], [], []
     
-    all_preds = []
-    all_labels = []
-    latencies = []
-    
-    with torch.no_grad():
-        for batch in val_loader:
-            input_ids = batch["input_ids"].to(next(model.parameters()).device)
-            labels = batch["label"].to(input_ids.device)
-            
-            start_lat = time.time()
-            logits = model(input_ids)
-            latencies.append(time.time() - start_lat)
-            
-            preds = torch.argmax(logits, dim=-1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
+    for batch in loader:
+        input_ids = batch["input_ids"].to(DEVICE)
+        start_lat = time.time()
+        logits = model(input_ids)
+        latencies.append(time.time() - start_lat)
+        all_preds.append(torch.argmax(logits, dim=-1).cpu().item())
+        all_labels.append(batch["label"].item())
             
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    avg_latency = sum(latencies) / len(latencies)
-    return f1, avg_latency
+    return f1, (sum(latencies) / len(latencies))
 
 
 def get_trainable_state_dict(model):
@@ -1478,193 +1447,105 @@ def tournament_selection(population, k=3):
 # --- GENOTYPE ---
 
 def apply_genotype(model, genotype):
-    """
-    Handles Variable Depth: 
-    Layers beyond the genotype length are set to 'inactive' (Identity/Skip).
-    """
-    for i, layer in enumerate(model.jamba.layers):
+    """Aplica fisicamente a estrutura do genótipo ao modelo Jamba."""
+    for i, layer in enumerate(model.lm.jamba.layers):
         if i < len(genotype):
             layer.active = True
-            # Set internal layer type based on genotype
-            # Note: This assumes your MambaBlock/AttentionBlock toggle logic
             layer.use_mamba = (genotype[i] == MAMBA)
             layer.use_attention = (genotype[i] == ATTN)
         else:
-            # Skip this layer entirely if the evolved depth is shorter than max
             layer.active = False
 
 # --- Fitness Function ---
-def evaluate(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None):
-    # Constrói o modelo com base no genótipo
-    model = JambaClassifier(base_model, num_classes=4).to(device)  # Adjust num_classes as needed
-
-    # Herança de pesos se disponível
+def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None):
+    # 1. Cria instância e aplica genótipo (O que faltava!)
+    model = JambaClassifier(copy.deepcopy(base_model), NUM_CLASSES).to(DEVICE)
+    apply_genotype(model, genotype)
+    
     if inherited_weights:
         model.load_state_dict(inherited_weights, strict=False)
     
-    # Congela/Descongela parâmetros conforme necessário
     setup_model_trainability(model, full_fine_tune=FINE_TUNE)
     
-    # TREINO + TEMPORIZAÇÃO
-    _, train_time = trainModel(model, train_ds, steps=steps, lr=LEARNING_RATE, batch_size=BATCH_SIZE)
-    print(f"Trained Genotype {genotype} for {steps} steps in {train_time:.2f} seconds. Evaluating...")
-    
-    # AVALIAÇÃO
-    f1, latency = eval_performance(model, val_ds)
-    print(f"Genotype {genotype} achieved F1: {f1:.4f} with latency: {latency:.4f} seconds.")
-    total_params = sum(p.numel() for p in model.parameters())
+    train_time = train_model(model, train_ds, steps)
+    f1, latency = evaluate_model(model, val_ds)
+
+    print(f"Evaluated Genotype: {genotype} | F1: {f1:.4f} | Latency: {latency:.4f}s | Train Time: {train_time:.2f}s")
     
     stats = {
-        'f1': f1,
-        'latency': latency,
-        'params': total_params,
-        'depth': len(genotype),
-        'train_time': train_time
+        'f1': f1, 'latency': latency, 
+        'params': sum(p.numel() for p in model.parameters()),
+        'depth': len(genotype), 'train_time': train_time
     }
     
-    return get_trainable_state_dict(model), stats
+    # Retornar pesos para herança e stats para fitness
+    return {k: v.cpu().clone() for k, v in model.state_dict().items() if v.requires_grad}, stats
 
 def fitness(population_list):
-    """
-    Fitness function
-    Takes into account: Performance (F1), Latency, and Model Size (Params)
-    """
     if not population_list: return
-    
     avg_f1 = sum(ind['stats']['f1'] for ind in population_list) / len(population_list)
     avg_lat = sum(ind['stats']['latency'] for ind in population_list) / len(population_list)
     avg_params = sum(ind['stats']['params'] for ind in population_list) / len(population_list)
 
     for ind in population_list:
         stats = ind['stats']
-        
-        # Prémio de Inteligência: F1 ao quadrado para dar um "boost" aos melhores
-        # Se o F1 for muito baixo (ex: < 0.2), a fitness base será quase nula
         base_score = stats['f1'] ** 2
-        
-        # Penalizações Relativas:
-        # Se o modelo for igual à média, o rácio é 1.0.
-        # Se for 2x mais lento, o rácio é 2.0 (o que reduz drasticamente a fitness).
         lat_ratio = stats['latency'] / max(avg_lat, 0.0001)
         param_ratio = stats['params'] / max(avg_params, 1.0)
-        
-        # Fórmula: Fitness = F1^2 * e^(-penalizações)
-        # Ajustar os pesos (0.5 e 0.2) se depois achar que ele ainda está a ser "preguiçoso"
         penalty = math.exp(-(0.5 * lat_ratio + 0.2 * param_ratio))
-        
         ind['fitness'] = max(0.0001, base_score * penalty)
 
 # --- EVOLUTION LOOP ---
-
-def evolve(base_model, train_ds, val_ds, pop_size=12, generations=10, elitism=2):
+def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1):
     history_logs = []
-
-    # Initial Population
+    
+    # Init Population
     population = []
-    print(f"Initializing Population of {pop_size}...")
-
-
-    # Initial Population
     for _ in range(pop_size):
         g = generate_random_genotype()
-        weights, stats = evaluate(base_model, g, train_ds, val_ds, steps=STEPS_1)
-        population.append({'genotype': g, 'weights': weights, 'stats': stats})
-
-    # Dar fitness
-    fitness(population)
-
-    for gen in range(generations):
-        # Count execution time
-        gen_start_time = time.time()
-        
-        population = sorted(population, key=lambda x: x['fitness'], reverse=True)
-
-        # SELECTION AND ELITISM
-        # Dangers: 
-        # - Too much elitism can reduce diversity and lead to local optima.
-        # - Too little elitism can lead to loss of good solutions and slow convergence.
-        new_candidates = population[:elitism] # Keep top elites
-
-        # REPRODUCTION PHASE
-        while len(new_candidates) < pop_size * 2: # Create a larger pool for the Hurdle
-
-            # Selection: Tournament Selection to pick parents
-            k=3
-            p1 = tournament_selection(population, k=k)
-            p2 = tournament_selection(population, k=k)
+        w, s = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1)
+        population.append({'genotype': g, 'weights': w, 'stats': s})
     
-            # Ensure parents are different
-            while p1 == p2:
-                p2 = tournament_selection(population, k=k)
+    for gen in range(generations):
+        gen_start_time = time.time()
+        fitness(population)
+        population = sorted(population, key=lambda x: x['fitness'], reverse=True)
         
-            child_g = crossover(p1['genotype'], p2['genotype'])
-            child_g = mutate(child_g, mutation_rate=MUTATION_RATE)
+        # Elitism & Reproduction
+        new_candidates = population[:elitism]
+        while len(new_candidates) < (pop_size * 2):
+            p1, p2 = tournament_selection(population), tournament_selection(population)
+            child_g = mutate(crossover(p1['genotype'], p2['genotype']), MUTATION_RATE)
+            parent_w = p1['weights'] if p1['fitness'] > p2['fitness'] else p2['weights']
             
-            # Weight Inheritance: Pick weights from the fitter parent
-            # Lamarckian Inheritance (full knowledge transfer from one parent)
-            parent_weights = p1['weights'] if p1['fitness'] > p2['fitness'] else p2['weights']
-            
-            # Inspired on Progressive Dynamic Hurdles, from the paper The Evolved Transformer
-            # HURDLE STEP 1: Fast Evaluation (Short Training)
-            # This is the "Hurdle" - we train many, but only keep the best
-            weights, stats = evaluate(base_model, child_g, train_ds, val_ds, 
-                                      steps=STEPS_1, inherited_weights=parent_weights)
-            
-            new_candidates.append({'genotype': child_g, 'weights': weights, 'stats': stats})
+            w, s = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, parent_w)
+            new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
 
-        # ATRIBUI FITNESS AOS CANDIDATOS DO HURDLE PARA PODER FILTRAR
+        # Hurdle Selection
         fitness(new_candidates)
-
-        # HURDLE STEP 2: Survival of the Fittest
-        # Filter the pool back down to pop_size based on short training
         new_candidates = sorted(new_candidates, key=lambda x: x['fitness'], reverse=True)
         population = new_candidates[:pop_size]
 
-        # FULL TRAINING: The survivors get an extra training boost to solidify weights
-        print(f"Gen {gen}: Refining top survivors...")
-        for individual in population:
-            weights, stats = evaluate(base_model, individual['genotype'], 
-                                                train_ds, val_ds, steps=STEPS_2, 
-                                                inherited_weights=individual['weights'])
-            individual['weights'] = weights
-            individual['stats'] = stats
+        # Refinement (Full Training for Survivors)
+        for ind in population:
+            w, s = evaluate_individual(base_model, ind['genotype'], train_ds, val_ds, STEPS_2, ind['weights'])
+            ind['weights'], ind['stats'] = w, s
 
-        fitness(population)
-        population = sorted(population, key=lambda x: x['fitness'], reverse=True)
+        gen_duration = (time.time() - gen_start_time) / 60
+        
+        # Logging Corrigido
+        for i, ind in enumerate(population):
+            history_logs.append({
+                'generation': gen, 'rank': i, 'fitness': ind['fitness'],
+                'f1': ind['stats']['f1'], 'latency': ind['stats']['latency'],
+                'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
+            })
 
-        gen_duration = (time.time() - gen_start_time) / 60 # Duration in minutes
-
-        for i, individual in enumerate(population):
-            log_entry = {
-                'generation': gen,
-                'rank': rank,
-                'fitness': ind['fitness'],
-                'f1': ind['stats']['f1'],
-                'train_time': ind['stats']['train_time'], # Tempo do modelo individual
-                'gen_time_min': gen_duration,             # Tempo total da geração
-                'genotype': str(ind['genotype'])
-            }
-            history_logs.append(log_entry)
-
-
-        # --- GENERATION SUMMARY PRINT ---
-        best_ind = population[0]
-        print(f"Gen {gen} Best Fitness: {best_ind['fitness']:.4f}")
-        print(f"Gen {gen} Best Genotype: {best_ind['genotype']}")
-
-        # --- SAVE ---
-        df = pd.DataFrame(history_logs)
-        df.to_csv("agnews_evolution_results.csv", index=False)
-            
-        # Memory Cleanup
+        pd.DataFrame(history_logs).to_csv("agnews_evolution_results.csv", index=False)
+        print(f"Gen {gen} Best: F1 {population[0]['stats']['f1']:.4f}")
+        
         gc.collect()
         torch.cuda.empty_cache()
-
-        # Time Logging
-        end_time = time.time()
-        print(f"Gen {gen} completed in {(end_time - start_time)/60:.2f} minutes")
-
-        print(f"--------------------------------------------------")
 
     return population[0]
 
