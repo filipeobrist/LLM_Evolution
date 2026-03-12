@@ -1247,70 +1247,108 @@ class JambaClassifier(torch.nn.Module):
     def __init__(self, base_lm, num_classes):
         super().__init__()
         self.lm = base_lm
+        
+        # 1. SEGURANÇA NA ENTRADA: Garante que d_model é um inteiro
+        in_features = base_lm.config.d_model
+        if isinstance(in_features, (list, tuple)):
+            in_features = in_features[0]
+            
+        # 2. SEGURANÇA NA SAÍDA: O erro provavelmente vem daqui.
+        # Se passaste o dataset inteiro ou uma lista, extraímos o tamanho.
+        if not isinstance(num_classes, int):
+            # Se for um dataset do Hugging Face, tentamos tirar o num_classes das features
+            try:
+                out_features = num_classes.features['label'].num_classes
+            except:
+                # Se for uma lista/tupla, tiramos o primeiro ou o comprimento
+                out_features = len(num_classes) if isinstance(num_classes, (list, tuple)) else 4
+        else:
+            out_features = num_classes
+
+        # print(f"DEBUG: Criando Linear com in={in_features} e out={out_features}")
+        
         self.classifier = torch.nn.Linear(
-            base_lm.config.d_model, num_classes
+            int(in_features), int(out_features)
         )
 
     def forward(self, input_ids):
-        logits = self.lm(input_ids)
-        if isinstance(logits, tuple):
-            logits = logits[0]
+            # Garante que os input_ids estão no dispositivo correto e são Long para o embedding
+            input_ids = input_ids.to(next(self.parameters()).device).long()
+            
+            # O ERRO está aqui: Se passares input_ids para self.lm.jamba() 
+            # e lá dentro ele fizer operações matemáticas sem passar pelo embedding primeiro, crasha.
+            
+            # MODO SEGURO:
+            # 1. Primeiro transformamos IDs (inteiros) em vetores (floats)
+            x = self.lm.embedding(input_ids) 
+            
+            # 2. Agora sim, x é FLOAT e pode passar pela Jamba/LayerNorm
+            outputs = self.lm.jamba(x) 
+            
+            hidden = self.lm.final_layernorm(outputs[0])
+            pooled = hidden.mean(dim=1)
+            return self.classifier(pooled)
 
-        # mean-pool hidden states BEFORE lm_head
-        hidden = self.lm.final_layernorm(
-            self.lm.jamba(
-                self.lm.embedding(input_ids)
-            )[0]
-        )
 
-        pooled = hidden.mean(dim=1)
-        return self.classifier(pooled)
-
-
-def load_agnews_small(n_train=10000, n_val=5000): # Diminui para tentar correr no pc. 127,600 samples existem na ag_news. No pc -> 1000, 500
+def load_agnews(tokenizer, n_train=2000, n_val=500):
+    print("Pre-tokenizing dataset...")
     ds = load_dataset("ag_news")
+    
+    def tokenize_function(examples):
+        # Tokeniza com padding fixo para evitar re-tokenização constante
+        return tokenizer(examples["text"], truncation=True, max_length=128, padding="max_length")
 
+    # Selecionar subsets
     train = ds["train"].shuffle(seed=42).select(range(n_train))
-    val   = ds["test"].shuffle(seed=42).select(range(n_val))
+    val = ds["test"].shuffle(seed=42).select(range(n_val))
+    
+    # Aplicar tokenização (removemos a coluna 'text' para poupar RAM)
+    tokenized_train = train.map(tokenize_function, batched=True, remove_columns=["text"])
+    tokenized_val = val.map(tokenize_function, batched=True, remove_columns=["text"])
+    
+    # Formatar para Tensores de PyTorch
+    tokenized_train.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
+    tokenized_val.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
+    
+    return tokenized_train, tokenized_val
 
-    return train, val
-
-def trainModel(model, tokenizer, train_ds, steps, lr=1e-4, batch_size=1): # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800
-                                                                          # batch_size=1, lr=1e-4, steps=200 ou algo baixo
+def trainModel(model, train_ds, steps, lr=1e-4, batch_size=1):
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
-    
-    # Using a DataLoader is cleaner than random.choice
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-
+    
+    start_time = time.time() # Início do cronómetro
     total_loss = 0
+    
     for i, batch in enumerate(train_loader):
         if i >= steps: break
         
-        inputs = tokenizer(batch["text"], return_tensors="pt", truncation=True, max_length=128, padding=True).to(next(model.parameters()).device)
-        labels = batch["label"].clone().detach().to(inputs["input_ids"].device)
+        # Dados já vêm como tensores do DataLoader
+        input_ids = batch["input_ids"].to(next(model.parameters()).device)
+        labels = batch["label"].to(input_ids.device)
         
         optimizer.zero_grad()
-        logits = model(inputs["input_ids"])
+        logits = model(input_ids)
         loss = torch.nn.functional.cross_entropy(logits, labels)
         loss.backward()
         optimizer.step()
         
         total_loss += loss.item()
-        
-    return total_loss / steps
+    
+    train_duration = time.time() - start_time # Fim do cronómetro
+    return total_loss / steps, train_duration
 
 # Constants
 MAMBA = 0
 ATTN  = 1
 MIN_LAYERS = 4
-MAX_LAYERS = 12
+MAX_LAYERS = 20
 
 # Evolution parameters
 MUTATION_RATE = 0.15
 POP_SIZE = 30
-GENERATIONS = 20
-ELITISM = 4
+GENERATIONS = 100
+ELITISM = 1
 
 
 # PARA CORRER NA MAQUINDA DO DEI
@@ -1333,34 +1371,30 @@ STEPS_2 = 200
 
 # Utils
 @torch.no_grad()
-def eval_performance(model, tokenizer, val_ds):
+def eval_performance(model, val_ds, n_samples=300):
     model.eval()
+    val_subset = val_ds.select(range(min(n_samples, len(val_ds))))
+    val_loader = DataLoader(val_subset, batch_size=16)
+    
     all_preds = []
     all_labels = []
+    latencies = []
     
-    # Measure Latency: Time for a full pass over the validation set
-    start_time = time.time()
-    
-    for ex in val_ds:
-        enc = tokenizer(
-            ex["text"],
-            return_tensors="pt",
-            truncation=True,
-            max_length=128
-        ).to(next(model.parameters()).device)
-
-        logits = model(enc["input_ids"])
-        pred = logits.argmax(dim=-1).item()
-        
-        all_preds.append(pred)
-        all_labels.append(ex["label"])
-        
-    end_time = time.time()
-    
-    # Calculate Metrics
+    with torch.no_grad():
+        for batch in val_loader:
+            input_ids = batch["input_ids"].to(next(model.parameters()).device)
+            labels = batch["label"].to(input_ids.device)
+            
+            start_lat = time.time()
+            logits = model(input_ids)
+            latencies.append(time.time() - start_lat)
+            
+            preds = torch.argmax(logits, dim=-1)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+            
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    avg_latency = (end_time - start_time) / len(val_ds) # seconds per sample
-    
+    avg_latency = sum(latencies) / len(latencies)
     return f1, avg_latency
 
 
@@ -1372,10 +1406,10 @@ def get_trainable_state_dict(model):
 def setup_model_trainability(model, full_fine_tune=False):
     """
     If full_fine_tune is True: Unfreezes everything for max accuracy.
-    If full_fine_tune is False: Only unfreezes Norms, MoE, and Classifier (Current Strategy).
+    If full_fine_tune is False: Only unfreezes Norms, MoE, and Classifier.
     """
     if full_fine_tune:
-        print("High-Performance Mode: Unfreezing all parameters...")
+        # print("High-Performance Mode: Unfreezing all parameters...")
         for p in model.parameters():
             p.requires_grad = True
     else:
@@ -1460,36 +1494,34 @@ def apply_genotype(model, genotype):
             layer.active = False
 
 # --- Fitness Function ---
+def evaluate(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None):
+    # Constrói o modelo com base no genótipo
+    model = JambaClassifier(base_model, num_classes=4).to(device)  # Adjust num_classes as needed
 
-def evaluate(base_lm, tokenizer, genotype, train_ds, val_ds, steps, inherited_weights=None):
-    """
-    Performance will be measured by F1 score
-    If we change the task, we may need to change the performance metric
-    Document Classification -> AG News -> Accuracy/F1
-    Text Summarization -> CNN/DailyMail / XSum -> ROUGUE
-    PT-EU translation -> Europarl / OPUS / FLORES (PT-EU) -> BLEU/COMET
-    """
-    model = JambaClassifier(copy.deepcopy(base_lm), num_classes=4).to(base_lm.device)
-    apply_genotype(model.lm, genotype)
+    # Herança de pesos se disponível
+    if inherited_weights:
+        model.load_state_dict(inherited_weights, strict=False)
+    
+    # Congela/Descongela parâmetros conforme necessário
     setup_model_trainability(model, full_fine_tune=FINE_TUNE)
     
-    if inherited_weights is not None:
-        model.load_state_dict(inherited_weights, strict=False)
-
-    # Training (Hurdle)
-    trainModel(model, tokenizer, train_ds, steps=steps, lr=LEARNING_RATE, batch_size=BATCH_SIZE) # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800 NA MAQUINA DO DEI
-
-    # Performance & Latency Evaluation
-    f1, latency = eval_performance(model, tokenizer, val_ds)
+    # TREINO + TEMPORIZAÇÃO
+    _, train_time = trainModel(model, train_ds, steps=steps, lr=LEARNING_RATE, batch_size=BATCH_SIZE)
+    print(f"Trained Genotype {genotype} for {steps} steps in {train_time:.2f} seconds. Evaluating...")
+    
+    # AVALIAÇÃO
+    f1, latency = eval_performance(model, val_ds)
+    print(f"Genotype {genotype} achieved F1: {f1:.4f} with latency: {latency:.4f} seconds.")
     total_params = sum(p.numel() for p in model.parameters())
-        
+    
     stats = {
-            'f1': f1,
-            'latency': latency,
-            'params': total_params,
-            'depth': len(genotype)
+        'f1': f1,
+        'latency': latency,
+        'params': total_params,
+        'depth': len(genotype),
+        'train_time': train_time
     }
-        
+    
     return get_trainable_state_dict(model), stats
 
 def fitness(population_list):
@@ -1524,17 +1556,18 @@ def fitness(population_list):
 
 # --- EVOLUTION LOOP ---
 
-def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10, elitism=2):
+def evolve(base_model, train_ds, val_ds, pop_size=12, generations=10, elitism=2):
     history_logs = []
 
     # Initial Population
     population = []
     print(f"Initializing Population of {pop_size}...")
 
+
     # Initial Population
     for _ in range(pop_size):
         g = generate_random_genotype()
-        weights, stats = evaluate(base_model, tokenizer, g, train_ds, val_ds, steps=STEPS_1)
+        weights, stats = evaluate(base_model, g, train_ds, val_ds, steps=STEPS_1)
         population.append({'genotype': g, 'weights': weights, 'stats': stats})
 
     # Dar fitness
@@ -1542,7 +1575,7 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
 
     for gen in range(generations):
         # Count execution time
-        start_time = time.time()
+        gen_start_time = time.time()
         
         population = sorted(population, key=lambda x: x['fitness'], reverse=True)
 
@@ -1574,7 +1607,7 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
             # Inspired on Progressive Dynamic Hurdles, from the paper The Evolved Transformer
             # HURDLE STEP 1: Fast Evaluation (Short Training)
             # This is the "Hurdle" - we train many, but only keep the best
-            weights, stats = evaluate(base_model, tokenizer, child_g, train_ds, val_ds, 
+            weights, stats = evaluate(base_model, child_g, train_ds, val_ds, 
                                       steps=STEPS_1, inherited_weights=parent_weights)
             
             new_candidates.append({'genotype': child_g, 'weights': weights, 'stats': stats})
@@ -1590,7 +1623,7 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
         # FULL TRAINING: The survivors get an extra training boost to solidify weights
         print(f"Gen {gen}: Refining top survivors...")
         for individual in population:
-            weights, stats = evaluate(base_model, tokenizer, individual['genotype'], 
+            weights, stats = evaluate(base_model, individual['genotype'], 
                                                 train_ds, val_ds, steps=STEPS_2, 
                                                 inherited_weights=individual['weights'])
             individual['weights'] = weights
@@ -1599,16 +1632,17 @@ def evolve(base_model, tokenizer, train_ds, val_ds, pop_size=12, generations=10,
         fitness(population)
         population = sorted(population, key=lambda x: x['fitness'], reverse=True)
 
+        gen_duration = (time.time() - gen_start_time) / 60 # Duration in minutes
+
         for i, individual in enumerate(population):
             log_entry = {
                 'generation': gen,
-                'rank': i,
-                'fitness': individual['fitness'], # Agora este valor é real e comparativo
-                'f1': individual['stats']['f1'],
-                'latency': individual['stats']['latency'],
-                'params': individual['stats']['params'],
-                'depth': individual['stats']['depth'],
-                'genotype': str(individual['genotype'])
+                'rank': rank,
+                'fitness': ind['fitness'],
+                'f1': ind['stats']['f1'],
+                'train_time': ind['stats']['train_time'], # Tempo do modelo individual
+                'gen_time_min': gen_duration,             # Tempo total da geração
+                'genotype': str(ind['genotype'])
             }
             history_logs.append(log_entry)
 
@@ -1639,8 +1673,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Running on: {device}")
 
 
-train_ds, val_ds = load_agnews_small()
+
 tokenizer = AutoTokenizer.from_pretrained("TechxGenus/Mini-Jamba")
+train_ds, val_ds = load_agnews(tokenizer)
 
 # We load the base model once and move it to the device
 # It stays "frozen" as a template; deepcopy will be used for individuals
@@ -1652,7 +1687,6 @@ def run_thesis_experiment():
 
     best_individual = evolve(
         base_model=base_model,
-        tokenizer=tokenizer,
         train_ds=train_ds,
         val_ds=val_ds,
         # pop_size and generations adjusted based on compute resources
