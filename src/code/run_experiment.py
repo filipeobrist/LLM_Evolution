@@ -1505,6 +1505,20 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
         g = generate_random_genotype()
         w, s = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1)
         population.append({'genotype': g, 'weights': w, 'stats': s})
+
+    fitness(population)
+
+    for i, ind in enumerate(sorted(population, key=lambda x: x['fitness'], reverse=True)):
+        history_logs.append({
+            'generation': 0,
+            'rank': i,
+            'fitness': ind['fitness'],
+            'f1': ind['stats']['f1'],
+            'latency': ind['stats']['latency'],
+            'params': ind['stats']['params'], 
+            'depth': ind['stats']['depth'],   
+            'genotype': str(ind['genotype'])
+        })
     
     for gen in range(generations):
         gen_start_time = time.time()
@@ -1516,6 +1530,8 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
         while len(new_candidates) < (pop_size * 2):
             p1, p2 = tournament_selection(population), tournament_selection(population)
             child_g = mutate(crossover(p1['genotype'], p2['genotype']), MUTATION_RATE)
+
+            # Lamarckian Inheritance
             parent_w = p1['weights'] if p1['fitness'] > p2['fitness'] else p2['weights']
             
             w, s = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, parent_w)
@@ -1533,12 +1549,17 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
         gen_duration = (time.time() - gen_start_time) / 60
         
-        # Logging Corrigido
         for i, ind in enumerate(population):
             history_logs.append({
-                'generation': gen, 'rank': i, 'fitness': ind['fitness'],
-                'f1': ind['stats']['f1'], 'latency': ind['stats']['latency'],
-                'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
+                'generation': gen,
+                'rank': i,
+                'fitness': ind['fitness'],
+                'f1': ind['stats']['f1'],
+                'latency': ind['stats']['latency'],
+                'params': ind['stats'].get('params', 0), # Garantir que o dado existe
+                'depth': ind['stats'].get('depth', len(ind['genotype'])),
+                'gen_time_min': gen_duration,
+                'genotype': str(ind['genotype'])
             })
 
         pd.DataFrame(history_logs).to_csv("agnews_evolution_results.csv", index=False)
