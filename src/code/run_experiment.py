@@ -1243,7 +1243,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
-# START HERE
+# Configurations start here
 # --- CONSTANTS & CONFIG ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
@@ -1268,7 +1268,6 @@ class JambaClassifier(nn.Module):
         nn.init.xavier_uniform_(self.classifier.weight)
 
     def forward(self, input_ids):
-        # Conversão explícita para evitar o erro "Got: Long"
         x = self.lm.embedding(input_ids) 
         outputs = self.lm.jamba(x)
         hidden_states = self.lm.final_layernorm(outputs[0])
@@ -1276,28 +1275,28 @@ class JambaClassifier(nn.Module):
         return self.classifier(pooled)
 
 def load_agnews(tokenizer, n_train=2000, n_val=500):
+    """Loads the AG News dataset and pre-tokenizes it using the provided tokenizer. It returns tokenized train and validation datasets ready for PyTorch."""
     print("Pre-tokenizing dataset...")
     ds = load_dataset("ag_news")
     
     def tokenize_function(examples):
-        # Tokeniza com padding fixo para evitar re-tokenização constante
+        # Pre-Tokenization
         return tokenizer(examples["text"], truncation=True, max_length=128, padding="max_length")
 
-    # Selecionar subsets
+    # Split
     train = ds["train"].shuffle(seed=42).select(range(n_train))
     val = ds["test"].shuffle(seed=42).select(range(n_val))
     
-    # Aplicar tokenização (removemos a coluna 'text' para poupar RAM)
     tokenized_train = train.map(tokenize_function, batched=True, remove_columns=["text"])
     tokenized_val = val.map(tokenize_function, batched=True, remove_columns=["text"])
     
-    # Formatar para Tensores de PyTorch
     tokenized_train.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
     tokenized_val.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
     
     return tokenized_train, tokenized_val
 
 def train_model(model, train_ds, steps):
+    """Trains the provided model on the provided training dataset for a given number of steps. It returns the total training time."""
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
     loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
@@ -1315,42 +1314,12 @@ def train_model(model, train_ds, steps):
             optimizer.step()
             step_count += 1
     return time.time() - start_time
-    
-# # Constants
-# MAMBA = 0
-# ATTN  = 1
-# MIN_LAYERS = 4
-# MAX_LAYERS = 20
-# NUM_CLASSES = 4
 
-# # Evolution parameters
-# MUTATION_RATE = 0.15
-# POP_SIZE = 30
-# GENERATIONS = 100
-# ELITISM = 1
-
-
-# # PARA CORRER NA MAQUINDA DO DEI
-# FINE_TUNE = True
-# LEARNING_RATE = 4e-4 # batch_size=16, lr=4e-4, steps=100/200 em vez de 400/800
-# BATCH_SIZE = 16
-# # # Inital hurdle of training
-# STEPS_1 = 150
-# # # The additional steps we train the best models with
-# STEPS_2 = 200
-
-# NO PC
-# FINE_TUNE = False
-# LEARNING_RATE = 1e-4
-# BATCH_SIZE = 1
-# # Inital hurdle of training
-# STEPS_1 = 200
-# # The additional steps we train the best models with
-# STEPS_2 = 400
 
 # Utils
 @torch.no_grad()
 def evaluate_model(model, val_ds):
+    """Returns F1 score and average latency per sample on the validation set."""
     model.eval()
     loader = DataLoader(val_ds, batch_size=1)
     all_preds, all_labels, latencies = [], [], []
@@ -1397,6 +1366,7 @@ def setup_model_trainability(model, full_fine_tune=False):
 # --- GENETIC OPERATORS ---
 
 def generate_random_genotype():
+    """Generates a random genotype with a random length between MIN_LAYERS and MAX_LAYERS. Each gene is either 0 (Mamba) or 1 (Attention)."""
     length = random.randint(MIN_LAYERS, MAX_LAYERS)
     return [random.randint(0, 1) for _ in range(length)]
 
@@ -1447,7 +1417,7 @@ def tournament_selection(population, k=3):
 # --- GENOTYPE ---
 
 def apply_genotype(model, genotype):
-    """Aplica fisicamente a estrutura do genótipo ao modelo Jamba."""
+    """Applies the genotype to the model by activating/deactivating layers and setting them to Mamba or Attention based on the gene value."""
     for i, layer in enumerate(model.lm.jamba.layers):
         if i < len(genotype):
             layer.active = True
@@ -1458,7 +1428,10 @@ def apply_genotype(model, genotype):
 
 # --- Fitness Function ---
 def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None):
-    # 1. Cria instância e aplica genótipo (O que faltava!)
+    """Evaluates an individual by applying its genotype to a fresh model, optionally loading inherited weights, 
+    training it, and then evaluating its F1 score and latency. It returns the trainable weights for inheritance
+    and a stats dictionary for fitness calculation."""
+
     model = JambaClassifier(copy.deepcopy(base_model), NUM_CLASSES).to(DEVICE)
     apply_genotype(model, genotype)
     
@@ -1478,10 +1451,12 @@ def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited
         'depth': len(genotype), 'train_time': train_time
     }
     
-    # Retornar pesos para herança e stats para fitness
+    # Return only trainable weights for inheritance
     return {k: v.cpu().clone() for k, v in model.state_dict().items() if v.requires_grad}, stats
 
 def fitness(population_list):
+    """Calculates fitness for each individual in the population based on their F1 score, latency, and parameter count."""
+
     if not population_list: return
     avg_f1 = sum(ind['stats']['f1'] for ind in population_list) / len(population_list)
     avg_lat = sum(ind['stats']['latency'] for ind in population_list) / len(population_list)
@@ -1497,6 +1472,10 @@ def fitness(population_list):
 
 # --- EVOLUTION LOOP ---
 def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1):
+    """Main evolution loop that initializes the population, evaluates fitness, 
+    performs selection, crossover, mutation, and refinement over multiple generations. 
+    It returns the best individual found at the end of evolution."""
+
     history_logs = []
     
     # Init Population
@@ -1525,24 +1504,28 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
         fitness(population)
         population = sorted(population, key=lambda x: x['fitness'], reverse=True)
         
-        # Elitism & Reproduction
+        # Elitism
         new_candidates = population[:elitism]
+
         while len(new_candidates) < (pop_size * 2):
+            # Selection
             p1, p2 = tournament_selection(population), tournament_selection(population)
+            # Crossover + Mutation
             child_g = mutate(crossover(p1['genotype'], p2['genotype']), MUTATION_RATE)
 
             # Lamarckian Inheritance
             parent_w = p1['weights'] if p1['fitness'] > p2['fitness'] else p2['weights']
             
+            # Evaluation of the child
             w, s = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, parent_w)
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
 
-        # Hurdle Selection
+        # Hurdle Selection: Step 1
         fitness(new_candidates)
         new_candidates = sorted(new_candidates, key=lambda x: x['fitness'], reverse=True)
         population = new_candidates[:pop_size]
 
-        # Refinement (Full Training for Survivors)
+        # Hurdle Selection: Step 2 (Refinement)
         for ind in population:
             w, s = evaluate_individual(base_model, ind['genotype'], train_ds, val_ds, STEPS_2, ind['weights'])
             ind['weights'], ind['stats'] = w, s
@@ -1556,7 +1539,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
                 'fitness': ind['fitness'],
                 'f1': ind['stats']['f1'],
                 'latency': ind['stats']['latency'],
-                'params': ind['stats'].get('params', 0), # Garantir que o dado existe
+                'params': ind['stats'].get('params', 0), 
                 'depth': ind['stats'].get('depth', len(ind['genotype'])),
                 'gen_time_min': gen_duration,
                 'genotype': str(ind['genotype'])
@@ -1591,7 +1574,6 @@ def run_thesis_experiment():
         base_model=base_model,
         train_ds=train_ds,
         val_ds=val_ds,
-        # pop_size and generations adjusted based on compute resources
         pop_size=POP_SIZE,
         generations=GENERATIONS,
         elitism=ELITISM
