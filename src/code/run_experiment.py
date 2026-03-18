@@ -1581,7 +1581,7 @@ def run_thesis_experiment():
     
     print(f"\nEvolution Complete!")
     print(f"Best Genotype: {best_individual['genotype']}")
-    print(f"Final Accuracy: {best_individual['fitness']:.4f}")
+    print(f"Stats: F1 {best_individual['stats']['f1']:.4f}, Latency {best_individual['stats']['latency']:.4f}s, Params {best_individual['stats']['params']}, Depth {best_individual['stats']['depth']}")
     
     return best_individual
 
