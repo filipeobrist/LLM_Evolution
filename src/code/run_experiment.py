@@ -1255,8 +1255,12 @@ GENERATIONS = 100
 ELITISM = 1
 LEARNING_RATE = 4e-4
 BATCH_SIZE = 16
-STEPS_1, STEPS_2 = 100, 100
+STEPS_1, STEPS_2 = 300, 300
 FINE_TUNE = True
+
+# Benchmark Mini-Jamba original 
+BASELINE_LATENCY = 0.35 
+BASELINE_PARAMS = 70_000_000
 
 
 class JambaClassifier(nn.Module):
@@ -1370,20 +1374,38 @@ def generate_random_genotype():
     length = random.randint(MIN_LAYERS, MAX_LAYERS)
     return [random.randint(0, 1) for _ in range(length)]
 
-def crossover(g1, g2):
-    """Cut-and-Splice Crossover for variable lengths"""
-    cut1 = random.randint(1, len(g1) - 1)
-    cut2 = random.randint(1, len(g2) - 1)
+def crossover(p1, p2):
+    # p1 e p2 são dicionários: {'genotype': [...], 'weights': state_dict}
+    child_genotype = []
+    child_weights = {}
     
-    child_genotype = g1[:cut1] + g2[cut2:]
-    
-    # Clamp length to constraints
-    if len(child_genotype) > MAX_LAYERS:
-        child_genotype = child_genotype[:MAX_LAYERS]
-    elif len(child_genotype) < MIN_LAYERS:
-        child_genotype = child_genotype + [random.randint(0, 1) for _ in range(MIN_LAYERS - len(child_genotype))]
+    # 1. Herdar pesos globais (Embeddings, Normas, Classificador) 
+    # Escolhemos do pai com melhor fitness para estabilidade
+    best_parent = p1 if p1['fitness'] > p2['fitness'] else p2
+    for name, param in best_parent['weights'].items():
+        if "layers" not in name:
+            child_weights[name] = param
+
+    # 2. Crossover por Bloco
+    max_len = max(len(p1['genotype']), len(p2['genotype']))
+    for i in range(max_len):
+        # Escolha aleatória do progenitor para este bloco específico
+        if i < len(p1['genotype']) and i < len(p2['genotype']):
+            parent_source = p1 if random.random() < 0.5 else p2
+        elif i < len(p1['genotype']):
+            parent_source = p1
+        else:
+            parent_source = p2
+            
+        child_genotype.append(parent_source['genotype'][i])
         
-    return child_genotype
+        # Copiar todos os pesos pertencentes a este bloco i
+        block_prefix = f"lm.jamba.layers.{i}."
+        for name, param in parent_source['weights'].items():
+            if name.startswith(block_prefix):
+                child_weights[name] = param
+
+    return child_genotype, child_weights
 
 def mutate(genotype, mutation_rate=0.15):
     """Multi-type mutation: Bit flip, Add layer, or Remove layer"""
@@ -1426,7 +1448,6 @@ def apply_genotype(model, genotype):
         else:
             layer.active = False
 
-# --- Fitness Function ---
 def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None):
     """Evaluates an individual by applying its genotype to a fresh model, optionally loading inherited weights, 
     training it, and then evaluating its F1 score and latency. It returns the trainable weights for inheritance
@@ -1444,10 +1465,21 @@ def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited
     f1, latency = evaluate_model(model, val_ds)
 
     print(f"Evaluated Genotype: {genotype} | F1: {f1:.4f} | Latency: {latency:.4f}s | Train Time: {train_time:.2f}s")
+
+    total_params = 0
+    for name, p in model.named_parameters():
+        # Só conta se não pertencer a uma camada inativa
+        parts = name.split('.')
+        if "layers" in parts:
+            layer_idx = int(parts[parts.index("layers") + 1])
+            if layer_idx < len(genotype):
+                total_params += p.numel()
+        else:
+            total_params += p.numel()
     
     stats = {
         'f1': f1, 'latency': latency, 
-        'params': sum(p.numel() for p in model.parameters()),
+        'params': total_params,
         'depth': len(genotype), 'train_time': train_time
     }
     
@@ -1458,17 +1490,41 @@ def fitness(population_list):
     """Calculates fitness for each individual in the population based on their F1 score, latency, and parameter count."""
 
     if not population_list: return
+
     avg_f1 = sum(ind['stats']['f1'] for ind in population_list) / len(population_list)
-    avg_lat = sum(ind['stats']['latency'] for ind in population_list) / len(population_list)
-    avg_params = sum(ind['stats']['params'] for ind in population_list) / len(population_list)
 
     for ind in population_list:
         stats = ind['stats']
         base_score = stats['f1'] ** 2
-        lat_ratio = stats['latency'] / max(avg_lat, 0.0001)
-        param_ratio = stats['params'] / max(avg_params, 1.0)
+        lat_ratio = stats['latency'] / BASELINE_LATENCY
+        param_ratio = stats['params'] / BASELINE_PARAMS
         penalty = math.exp(-(0.5 * lat_ratio + 0.2 * param_ratio))
         ind['fitness'] = max(0.0001, base_score * penalty)
+
+
+def smart_weight_inheritance(child_model, parent_weights, child_genotype, parent_genotype):
+    child_dict = child_model.state_dict()
+    new_weights = {}
+
+    for name, param in child_dict.items():
+        # Se o peso não for de uma camada evoluível (ex: embeddings, final_norm, classifier)
+        if "layers" not in name:
+            if name in parent_weights:
+                new_weights[name] = parent_weights[name]
+            continue
+        
+        # Extrair o índice da camada: "lm.jamba.layers.0.mamba.weights" -> 0
+        parts = name.split('.')
+        layer_idx = int(parts[parts.index("layers") + 1])
+        
+        # Só herdar se a camada existir no pai E for do mesmo tipo
+        if layer_idx < len(parent_genotype):
+            if child_genotype[layer_idx] == parent_genotype[layer_idx]:
+                if name in parent_weights:
+                    new_weights[name] = parent_weights[name]
+    
+    # Carregar apenas o que foi filtrado
+    child_model.load_state_dict(new_weights, strict=False)
 
 # --- EVOLUTION LOOP ---
 def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1):
@@ -1477,6 +1533,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     It returns the best individual found at the end of evolution."""
 
     history_logs = []
+    print("Steps per evaluation: ", STEPS_1)
     
     # Init Population
     population = []
@@ -1511,13 +1568,15 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             # Selection
             p1, p2 = tournament_selection(population), tournament_selection(population)
             # Crossover + Mutation
-            child_g = mutate(crossover(p1['genotype'], p2['genotype']), MUTATION_RATE)
+            temp_g, child_w = crossover(p1, p2)
+            child_g = mutate(temp_g, MUTATION_RATE)
 
             # Lamarckian Inheritance
-            parent_w = p1['weights'] if p1['fitness'] > p2['fitness'] else p2['weights']
+            # parent_w = p1['weights'] if p1['fitness'] > p2['fitness'] else p2['weights']
+            # smart_weight_inheritance(base_model, parent_w, child_g, p1['genotype'] if p1['fitness'] > p2['fitness'] else p2['genotype'])
             
             # Evaluation of the child
-            w, s = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, parent_w)
+            w, s = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, child_w)
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
 
         # Hurdle Selection: Step 1
