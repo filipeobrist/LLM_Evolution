@@ -1250,18 +1250,20 @@ MAMBA, ATTN = 0, 1
 MIN_LAYERS, MAX_LAYERS = 4, 20
 NUM_CLASSES = 4
 MUTATION_RATE = 0.15
-POP_SIZE = 20
+POP_SIZE = 30
 GENERATIONS = 100
 ELITISM = 1
 LEARNING_RATE = 4e-4
 BATCH_SIZE = 16
-STEPS_1, STEPS_2 = 300, 300
+STEPS_1, STEPS_2 = 500, 500
 FINE_TUNE = True
 
 # Benchmark Mini-Jamba original 
-BASELINE_LATENCY = 0.35 
-BASELINE_PARAMS = 70_000_000
+# BASELINE_LATENCY = 0.35 
+# BASELINE_PARAMS = 70_000_000
 
+BASELINE_LATENCY = 0.25
+BASELINE_PARAMS = 50_000_000
 
 class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):
@@ -1278,7 +1280,7 @@ class JambaClassifier(nn.Module):
         pooled = hidden_states.mean(dim=1) 
         return self.classifier(pooled)
 
-def load_agnews(tokenizer, n_train=2000, n_val=500):
+def load_agnews(tokenizer, n_train=3000, n_val=1500):
     """Loads the AG News dataset and pre-tokenizes it using the provided tokenizer. It returns tokenized train and validation datasets ready for PyTorch."""
     print("Pre-tokenizing dataset...")
     ds = load_dataset("ag_news")
@@ -1299,24 +1301,44 @@ def load_agnews(tokenizer, n_train=2000, n_val=500):
     
     return tokenized_train, tokenized_val
 
-def train_model(model, train_ds, steps):
-    """Trains the provided model on the provided training dataset for a given number of steps. It returns the total training time."""
+def train_model(model, train_ds, steps, val_ds=None, patience=2):
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
     loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     
+    best_f1 = 0
+    no_improve_count = 0
+    val_check_interval = 50 # Early stopping check every 50 steps
+    
     start_time = time.time()
     step_count = 0
+    
     while step_count < steps:
         for batch in loader:
             if step_count >= steps: break
-            input_ids, labels = batch["input_ids"].to(DEVICE), batch["label"].to(DEVICE)
             
+            input_ids, labels = batch["input_ids"].to(DEVICE), batch["label"].to(DEVICE)
             optimizer.zero_grad()
             loss = F.cross_entropy(model(input_ids), labels)
             loss.backward()
             optimizer.step()
             step_count += 1
+            
+            # --- Lógica de Early Stopping ---
+            if step_count % val_check_interval == 0 and val_ds is not None:
+                current_f1, _ = evaluate_model(model, val_ds)
+                model.train() # Volta ao modo treino após avaliar
+                
+                if current_f1 > best_f1:
+                    best_f1 = current_f1
+                    no_improve_count = 0
+                else:
+                    no_improve_count += 1
+                
+                if no_improve_count >= patience:
+                    # print(f"Early Stopping no passo {step_count}")
+                    return time.time() - start_time
+                    
     return time.time() - start_time
 
 
@@ -1330,9 +1352,11 @@ def evaluate_model(model, val_ds):
     
     for batch in loader:
         input_ids = batch["input_ids"].to(DEVICE)
-        start_lat = time.time()
+        torch.cuda.synchronize() # Espera que a GPU termine
+        start_lat = time.perf_counter()
         logits = model(input_ids)
-        latencies.append(time.time() - start_lat)
+        torch.cuda.synchronize() 
+        latencies.append(time.perf_counter() - start_lat)
         all_preds.append(torch.argmax(logits, dim=-1).cpu().item())
         all_labels.append(batch["label"].item())
             
@@ -1461,7 +1485,7 @@ def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited
     
     setup_model_trainability(model, full_fine_tune=FINE_TUNE)
     
-    train_time = train_model(model, train_ds, steps)
+    train_time = train_model(model, train_ds, steps, val_ds=val_ds, patience=2)
     f1, latency = evaluate_model(model, val_ds)
 
     print(f"Evaluated Genotype: {genotype} | F1: {f1:.4f} | Latency: {latency:.4f}s | Train Time: {train_time:.2f}s")
@@ -1495,7 +1519,7 @@ def fitness(population_list):
 
     for ind in population_list:
         stats = ind['stats']
-        base_score = stats['f1'] ** 2
+        base_score = stats['f1'] ** 4
         lat_ratio = stats['latency'] / BASELINE_LATENCY
         param_ratio = stats['params'] / BASELINE_PARAMS
         penalty = math.exp(-(0.5 * lat_ratio + 0.2 * param_ratio))
