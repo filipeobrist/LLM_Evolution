@@ -1252,7 +1252,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
 MIN_LAYERS, MAX_LAYERS = 4, 20
 NUM_CLASSES = 4
-MUTATION_RATE = 0.15
+MUTATION_RATE = 0.25
 POP_SIZE = 30
 GENERATIONS = 100
 ELITISM = 1
@@ -1618,7 +1618,7 @@ def plot_population_vs_best(data):
     # 1. Extrair todas as curvas de loss
     all_curves = [d['losses'] for d in data]
     # Garantir que todas têm o mesmo tamanho para a média (padding)
-    max_len = 782
+    max_len = STEPS_1
     padded = np.array([c + [c[-1]] * (max_len - len(c)) for c in all_curves])
     
     # 2. Calcular Média
@@ -1648,6 +1648,8 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     history_logs = []
     gen0_data = []
     
+    gen_start_time = time.time()
+
     print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
     for i in range(pop_size): #*2 for phd
@@ -1659,6 +1661,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
     fitness(population)
     population = sorted(population, key=lambda x: x['fitness'], reverse=True)
+    gen0_data = [{'losses': ind['losses'], 'f1': ind['stats']['f1']} for ind in population]
 
     
     # print("--- Generation 0: Refining survivors (Step 2) ---")
@@ -1671,6 +1674,8 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     #     gen0_data.append({'losses': full_losses, 'f1': s['f1']})
     #     ind['weights'], ind['stats'] = w, s
     #     del ind['temp_losses']
+
+    gen_duration = (time.time() - gen_start_time) / 60
     
     # Log da Geração 0 (agora com treino completo!)
     for i, ind in enumerate(sorted(population, key=lambda x: x['fitness'], reverse=True)):
@@ -1678,8 +1683,11 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             'generation': 0, 'rank': i, 'fitness': ind['fitness'],
             'f1': ind['stats']['f1'], 'latency': ind['stats']['latency'],
             'params': ind['stats']['params'], 'depth': ind['stats']['depth'],
-            'genotype': str(ind['genotype'])
+            'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
         })
+
+    pd.DataFrame(history_logs).to_csv("agnews_evolution_results_startover_without_phd_500.csv", index=False)
+    print(f"Gen 0 Best: F1 {population[0]['stats']['f1']:.4f}")
 
     # --- GERAR O GRÁFICO FINAL DA POPULAÇÃO ---
     plot_population_vs_best(gen0_data)
