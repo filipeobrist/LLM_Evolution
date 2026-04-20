@@ -1261,8 +1261,8 @@ BATCH_SIZE = 32
 STEPS_1, STEPS_2 = 100, 200
 FINE_TUNE = True
 
-BATCH_SIZE = 16
-STEPS_1 = 500
+BATCH_SIZE = 32
+STEPS_1 = 150
 
 # Benchmark Mini-Jamba original 
 # BASELINE_LATENCY = 0.35 
@@ -1714,7 +1714,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
 
 
-        population = new_candidates + population[elitism:]
+        population = new_candidates
         fitness(population)
         population = sorted(population, key=lambda x: x['fitness'], reverse=True)
 
