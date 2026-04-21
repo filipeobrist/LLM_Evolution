@@ -1632,6 +1632,7 @@ def plot_population_vs_best(data):
 # --- EVOLUTION LOOP ---
 def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1):
     history_logs = []
+    gen0_data = []
     
     # --- Geração 0 ---
     gen_start_time = time.time()
@@ -1640,11 +1641,12 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     for i in range(pop_size):
         g = generate_random_genotype()
         # Treino do zero para a base inicial
-        w, s, _ = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i))
+        w, s, losses = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i))
         population.append({'genotype': g, 'weights': w, 'stats': s})
 
     fitness(population)
     population = sorted(population, key=lambda x: x['fitness'], reverse=True)
+    gen0_data = [{'losses': ind['losses'], 'f1': ind['stats']['f1']} for ind in population]
 
     gen_duration = (time.time() - gen_start_time) / 60
 
@@ -1658,6 +1660,8 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
     pd.DataFrame(history_logs).to_csv("agnews_evolution_results_no_weight_inheritance.csv", index=False)
     print(f"Gen 0 Best: F1 {population[0]['stats']['f1']:.4f}")
+
+    plot_population_vs_best(gen0_data)
     
 
     # 3. LOOP DE EVOLUÇÃO
