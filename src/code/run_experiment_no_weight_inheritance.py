@@ -1263,7 +1263,7 @@ STEPS_1, STEPS_2 = 100, 200
 FINE_TUNE = True
 
 BATCH_SIZE = 32
-STEPS_1 = 100
+STEPS_1 = 50
 
 # Benchmark Mini-Jamba original 
 # BASELINE_LATENCY = 0.35 
