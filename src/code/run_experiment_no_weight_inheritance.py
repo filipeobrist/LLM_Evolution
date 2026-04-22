@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 # Count the execution time
@@ -1598,7 +1599,6 @@ def smart_weight_inheritance(child_model, parent_weights, child_genotype, parent
     child_model.load_state_dict(new_weights, strict=False)
 
 def plot_population_vs_best(data):
-    import numpy as np
     plt.figure(figsize=(12, 6))
     
     # 1. Extrair todas as curvas de loss
@@ -1630,9 +1630,11 @@ def plot_population_vs_best(data):
     plt.close()
 
 # --- EVOLUTION LOOP ---
-def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1):
+def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1, run_name="evolution_run"):
     history_logs = []
     gen0_data = []
+    best_overall_f1 = -1.0
+    best_overall_data = {}
     
     # --- Geração 0 ---
     gen_start_time = time.time()
@@ -1642,11 +1644,13 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
         g = generate_random_genotype()
         # Treino do zero para a base inicial
         w, s, losses = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i))
-        population.append({'genotype': g, 'weights': w, 'stats': s})
+        population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
 
     fitness(population)
     population = sorted(population, key=lambda x: x['fitness'], reverse=True)
     gen0_data = [{'losses': ind['losses'], 'f1': ind['stats']['f1']} for ind in population]
+
+    current_gen_best = population[0]
 
     gen_duration = (time.time() - gen_start_time) / 60
 
@@ -1658,7 +1662,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
         })
 
-    pd.DataFrame(history_logs).to_csv("agnews_evolution_results_no_weight_inheritance.csv", index=False)
+    pd.DataFrame(history_logs).to_csv(f"results_{run_name}.csv", index=False)
     print(f"Gen 0 Best: F1 {population[0]['stats']['f1']:.4f}")
 
     plot_population_vs_best(gen0_data)
@@ -1695,6 +1699,23 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
         fitness(population)
         population = sorted(population, key=lambda x: x['fitness'], reverse=True)
 
+        current_gen_best = population[0]
+
+        if current_gen_best['stats']['f1'] > best_overall_f1:
+            best_overall_f1 = current_gen_best['stats']['f1']
+            # Guardamos uma CÓPIA PROFUNDA dos pesos e dados
+            best_overall_data = {
+                'genotype': current_gen_best['genotype'],
+                'state_dict': copy.deepcopy(current_gen_best['weights']),
+                'fitness': current_gen_best['fitness'],
+                'f1': current_gen_best['stats']['f1'],
+                'latency': current_gen_best['stats']['latency'],
+                'params': current_gen_best['stats']['params'],
+                'depth': current_gen_best['stats']['depth'],
+                'generation': gen
+            }
+            print(f"Novo Recorde no Run! Gen {gen}: F1 {best_overall_f1:.4f}")
+
         # Logs e Monitorização
         gen_duration = (time.time() - gen_start_time) / 60
         for i, ind in enumerate(population):
@@ -1705,13 +1726,26 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
                 'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
             })
 
-        pd.DataFrame(history_logs).to_csv("agnews_evolution_results_no_weight_inheritance.csv", index=False)
+        pd.DataFrame(history_logs).to_csv(f"results_{run_name}.csv", index=False)
         print(f"Gen {gen} Best: F1 {population[0]['stats']['f1']:.4f}")
         
         gc.collect()
         torch.cuda.empty_cache()
 
-    return population[0]
+    return best_overall_data
+
+
+
+SEEDS = [42, 123, 999, 2024, 7]
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # Garante que as operações no GPU sejam determinísticas
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1728,21 +1762,41 @@ base_model = from_pretrained("TechxGenus/Mini-Jamba").to(device)
 
 # Run
 def run_thesis_experiment():
-    print("Starting Evolution")
+    for run_idx, seed in enumerate(SEEDS):
+        print(f"\n{'='*30}")
+        print(f"Iniciating RUN {run_idx + 1}/5 (SEED: {seed})")
+        print(f"{'='*30}")
+            
+        # 1. Preparar ambiente para este run
+        set_seed(seed)
+        run_name = f"run_{run_idx+1}_seed_{seed}"
+            
+        # 2. Reinicializar tudo para evitar "leak" de memória entre runs
+        gc.collect()
+        torch.cuda.empty_cache()
 
-    best_individual = evolve(
-        base_model=base_model,
-        train_ds=train_ds,
-        val_ds=val_ds,
-        pop_size=POP_SIZE,
-        generations=GENERATIONS,
-        elitism=ELITISM
-    )
-    
-    print(f"\nEvolution Complete!")
-    print(f"Best Genotype: {best_individual['genotype']}")
-    print(f"Stats: F1 {best_individual['stats']['f1']:.4f}, Latency {best_individual['stats']['latency']:.4f}s, Params {best_individual['stats']['params']}, Depth {best_individual['stats']['depth']}")
-    
-    return best_individual
+        best_of_run = evolve(
+            run_name=run_name,
+            base_model=base_model,
+            train_ds=train_ds,
+            val_ds=val_ds,
+            pop_size=POP_SIZE,
+            generations=GENERATIONS,
+            elitism=ELITISM
+        )
+        
+        checkpoint_path = f"best_model_{run_name}.pt"
+        torch.save({
+            'genotype': best_of_run['genotype'],
+            'state_dict': best_of_run['state_dict'],
+            'f1': best_of_run['f1'],
+            'seed': seed,
+            'generation': best_of_run['generation']
+        }, checkpoint_path)
+        
+        print(f"Run {run_idx+1} concluído. Melhor F1: {best_of_run['f1']:.4f} (Gen {best_of_run['generation']})")
+        print(f"Modelo guardado em: {checkpoint_path}")
 
-best_model_data = run_thesis_experiment()
+    
+if __name__ == "__main__":
+    run_thesis_experiment()
