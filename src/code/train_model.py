@@ -1268,9 +1268,9 @@ class JambaClassifier(nn.Module):
 # ==========================================
 # CONFIGURAÇÕES TÉCNICAS
 # ==========================================
-CHECKPOINT_NAME = "best_model_run_2_seed_123.pt" # Alterar para ficheiros a usar
-OUTPUT_CSV = "trained_model_results_run_2.csv"
-MODEL_SAVE_PATH = "trained_model_run_2.pt"
+CHECKPOINT_NAME = "best_model_run_3_seed_999.pt" # Alterar para ficheiros a usar
+OUTPUT_CSV = "trained_model_results_run_3.csv"
+MODEL_SAVE_PATH = "trained_model_run_3.pt"
 BATCH_SIZE = 32
 EPOCHS = 4
 LEARNING_RATE = 3e-5
@@ -1384,6 +1384,9 @@ def run_intensive_benchmark():
     print(f"A carregar checkpoint: {CHECKPOINT_NAME}")
     base_template = from_pretrained("TechxGenus/Mini-Jamba").to(device)
     checkpoint = torch.load(CHECKPOINT_NAME, map_location=device)
+    genotype = checkpoint['genotype']
+    
+    print(f"\n GENÓTIPO DO MODELO: {genotype}")
     
     # Criar modelo com a arquitetura NAS
     model = IndividualModel(base_template, checkpoint['genotype']).to(device)
@@ -1397,6 +1400,8 @@ def run_intensive_benchmark():
     criterion = nn.CrossEntropyLoss()
 
     history = []
+
+    best_f1 = -1.0  # Guardar o best model
 
     # 4. Loop de Treino e Avaliação por Época
     for epoch in range(EPOCHS):
@@ -1423,10 +1428,20 @@ def run_intensive_benchmark():
         
         # Avaliação detalhada no Test Set (Benchmark)
         metrics = evaluate_full(model, test_loader, device, criterion)
+        current_f1 = metrics["f1"]
+
+        # --- LÓGICA DE SALVAMENTO DO MELHOR MODELO ---
+        if current_f1 > best_f1:
+            best_f1 = current_f1
+            print(f"Novo recorde de F1: {best_f1:.4f}! A guardar pesos...")
+            torch.save(model.state_dict(), MODEL_SAVE_PATH)
+        else:
+            print(f"F1 ({current_f1:.4f}) não superou o melhor ({best_f1:.4f}).")
         
         # Guardar resultados
         epoch_data = {
             "epoch": epoch + 1,
+            "genotype": "".join(map(str, genotype)),
             "train_loss": avg_train_loss,
             "test_loss": metrics["loss"],
             "accuracy": metrics["acc"],
@@ -1444,7 +1459,6 @@ def run_intensive_benchmark():
     # 5. Salvar Tudo
     df_results = pd.DataFrame(history)
     df_results.to_csv(OUTPUT_CSV, index=False)
-    torch.save(model.state_dict(), MODEL_SAVE_PATH)
     
     print(f"\nBenchmark concluído!")
     print(f"Logs guardados em: {OUTPUT_CSV}")
