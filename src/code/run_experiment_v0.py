@@ -13,9 +13,12 @@ from torch.utils.data import DataLoader
 # from tqdm import tqdm
 from sklearn.metrics import f1_score
 import pandas as pd
+import matplotlib.pyplot as plt
+
 
 # Count the execution time
 import time
+
 
 """
 
@@ -49,20 +52,20 @@ def pad_npo2(X):
 class PScan(torch.autograd.Function):
     @staticmethod
     def pscan(A, X):
-        # A : (B, D, L, N)
-        # X : (B, D, L, N)
+        # A : (B, D, L, N)
+        # X : (B, D, L, N)
 
-        # modifies X in place by doing a parallel scan.
-        # more formally, X will be populated by these values :
-        # H[t] = A[t] * H[t-1] + X[t] with H[0] = 0
-        # which are computed in parallel (2*log2(T) sequential steps (ideally), instead of T sequential steps)
+        # modifies X in place by doing a parallel scan.
+        # more formally, X will be populated by these values :
+        # H[t] = A[t] * H[t-1] + X[t] with H[0] = 0
+        # which are computed in parallel (2*log2(T) sequential steps (ideally), instead of T sequential steps)
 
-        # only supports L that is a power of two (mainly for a clearer code)
+        # only supports L that is a power of two (mainly for a clearer code)
         
         B, D, L, _ = A.size()
         num_steps = int(math.log2(L))
 
-        # up sweep (last 2 steps unfolded)
+        # up sweep (last 2 steps unfolded)
         Aa = A
         Xa = X
         for _ in range(num_steps-2):
@@ -76,7 +79,7 @@ class PScan(torch.autograd.Function):
             Aa = Aa[:, :, :, 1]
             Xa = Xa[:, :, :, 1]
 
-        # we have only 4, 2 or 1 nodes left
+        # we have only 4, 2 or 1 nodes left
         if Xa.size(2) == 4:
             Xa[:, :, 1].add_(Aa[:, :, 1].mul(Xa[:, :, 0]))
             Aa[:, :, 1].mul_(Aa[:, :, 0])
@@ -88,7 +91,7 @@ class PScan(torch.autograd.Function):
         else:
             return
 
-        # down sweep (first 2 steps unfolded)
+        # down sweep (first 2 steps unfolded)
         Aa = A[:, :, 2**(num_steps-2)-1:L:2**(num_steps-2)]
         Xa = X[:, :, 2**(num_steps-2)-1:L:2**(num_steps-2)]
         Xa[:, :, 2].add_(Aa[:, :, 2].mul(Xa[:, :, 1]))
@@ -107,19 +110,19 @@ class PScan(torch.autograd.Function):
 
     @staticmethod
     def pscan_rev(A, X):
-        # A : (B, D, L, N)
-        # X : (B, D, L, N)
+        # A : (B, D, L, N)
+        # X : (B, D, L, N)
 
-        # the same function as above, but in reverse
+        # the same function as above, but in reverse
         # (if you flip the input, call pscan, then flip the output, you get what this function outputs)
-        # it is used in the backward pass
+        # it is used in the backward pass
 
-        # only supports L that is a power of two (mainly for a clearer code)
+        # only supports L that is a power of two (mainly for a clearer code)
 
         B, D, L, _ = A.size()
         num_steps = int(math.log2(L))
 
-        # up sweep (last 2 steps unfolded)
+        # up sweep (last 2 steps unfolded)
         Aa = A
         Xa = X
         for _ in range(num_steps-2):
@@ -133,7 +136,7 @@ class PScan(torch.autograd.Function):
             Aa = Aa[:, :, :, 0]
             Xa = Xa[:, :, :, 0]
 
-        # we have only 4, 2 or 1 nodes left
+        # we have only 4, 2 or 1 nodes left
         if Xa.size(2) == 4:
             Xa[:, :, 2].add_(Aa[:, :, 2].mul(Xa[:, :, 3]))
             Aa[:, :, 2].mul_(Aa[:, :, 3])
@@ -145,7 +148,7 @@ class PScan(torch.autograd.Function):
         else:
             return
 
-        # down sweep (first 2 steps unfolded)
+        # down sweep (first 2 steps unfolded)
         Aa = A[:, :, 0:L:2**(num_steps-2)]
         Xa = X[:, :, 0:L:2**(num_steps-2)]
         Xa[:, :, 1].add_(Aa[:, :, 1].mul(Xa[:, :, 2]))
@@ -178,25 +181,25 @@ class PScan(torch.autograd.Function):
 
         L = X_in.size(1)
 
-        # cloning is requiered because of the in-place ops
+        # cloning is requiered because of the in-place ops
         if L == npo2(L):
             A = A_in.clone()
             X = X_in.clone()
         else:
-            # pad tensors (and clone btw)
-            A = pad_npo2(A_in) # (B, npo2(L), D, N)
-            X = pad_npo2(X_in) # (B, npo2(L), D, N)
+            # pad tensors (and clone btw)
+            A = pad_npo2(A_in) # (B, npo2(L), D, N)
+            X = pad_npo2(X_in) # (B, npo2(L), D, N)
         
         # prepare tensors
-        A = A.transpose(2, 1) # (B, D, npo2(L), N)
-        X = X.transpose(2, 1) # (B, D, npo2(L), N)
+        A = A.transpose(2, 1) # (B, D, npo2(L), N)
+        X = X.transpose(2, 1) # (B, D, npo2(L), N)
 
-        # parallel scan (modifies X in-place)
+        # parallel scan (modifies X in-place)
         PScan.pscan(A, X)
 
         ctx.save_for_backward(A_in, X)
         
-        # slice [:, :L] (cut if there was padding)
+        # slice [:, :L] (cut if there was padding)
         return X.transpose(2, 1)[:, :L]
     
     @staticmethod
@@ -219,17 +222,17 @@ class PScan(torch.autograd.Function):
         # cloning is requiered because of the in-place ops
         if L == npo2(L):
             grad_output = grad_output_in.clone()
-            # the next padding will clone A_in
+            # the next padding will clone A_in
         else:
-            grad_output = pad_npo2(grad_output_in) # (B, npo2(L), D, N)
-            A_in = pad_npo2(A_in) # (B, npo2(L), D, N)
+            grad_output = pad_npo2(grad_output_in) # (B, npo2(L), D, N)
+            A_in = pad_npo2(A_in) # (B, npo2(L), D, N)
 
         # prepare tensors
         grad_output = grad_output.transpose(2, 1)
-        A_in = A_in.transpose(2, 1) # (B, D, npo2(L), N)
-        A = torch.nn.functional.pad(A_in[:, :, 1:], (0, 0, 0, 1)) # (B, D, npo2(L), N) shift 1 to the left (see hand derivation)
+        A_in = A_in.transpose(2, 1) # (B, D, npo2(L), N)
+        A = torch.nn.functional.pad(A_in[:, :, 1:], (0, 0, 0, 1)) # (B, D, npo2(L), N) shift 1 to the left (see hand derivation)
 
-        # reverse parallel scan (modifies grad_output in-place)
+        # reverse parallel scan (modifies grad_output in-place)
         PScan.pscan_rev(A, grad_output)
 
         Q = torch.zeros_like(X)
@@ -261,16 +264,16 @@ See Figure 3 of the paper (page 8) for a visual representation of a MambaBlock.
 
 @dataclass
 class MambaConfig:
-    d_model: int # D
+    d_model: int # D
     n_layers: int
     dt_rank: Union[int, str] = 'auto'
-    d_state: int = 16 # N in paper/comments
-    expand_factor: int = 2 # E in paper/comments
+    d_state: int = 16 # N in paper/comments
+    expand_factor: int = 2 # E in paper/comments
     d_conv: int = 4
 
     dt_min: float = 0.001
     dt_max: float = 0.1
-    dt_init: str = "random" # "random" or "constant"
+    dt_init: str = "random" # "random" or "constant"
     dt_scale: float = 1.0
     dt_init_floor = 1e-4
 
@@ -284,7 +287,7 @@ class MambaConfig:
     mup: bool = False
     mup_base_width: float = 128 # width=d_model
 
-    pscan: bool = True # use parallel scan mode or sequential mode when training
+    pscan: bool = True # use parallel scan mode or sequential mode when training
     use_cuda: bool = False # use official CUDA implementation when training (not compatible with (b)float16)
 
     def __post_init__(self):
@@ -306,9 +309,9 @@ class Mamba(nn.Module):
         self.layers = nn.ModuleList([ResidualBlock(config) for _ in range(config.n_layers)])
 
     def forward(self, x):
-        # x : (B, L, D)
+        # x : (B, L, D)
 
-        # y : (B, L, D)
+        # y : (B, L, D)
 
         for layer in self.layers:
             x = layer(x)
@@ -316,11 +319,11 @@ class Mamba(nn.Module):
         return x
     
     def step(self, x, caches):
-        # x : (B, L, D)
-        # caches : [cache(layer) for all layers], cache : (h, inputs)
+        # x : (B, L, D)
+        # caches : [cache(layer) for all layers], cache : (h, inputs)
 
-        # y : (B, L, D)
-        # caches : [cache(layer) for all layers], cache : (h, inputs)
+        # y : (B, L, D)
+        # caches : [cache(layer) for all layers], cache : (h, inputs)
 
         for i, layer in enumerate(self.layers):
             x, caches[i] = layer.step(x, caches[i])
@@ -335,21 +338,21 @@ class ResidualBlock(nn.Module):
         self.norm = RMSNorm(config.d_model, config.rms_norm_eps, config.mup)
 
     def forward(self, x):
-        # x : (B, L, D)
+        # x : (B, L, D)
 
-        # output : (B, L, D)
+        # output : (B, L, D)
 
         output = self.mixer(self.norm(x)) + x
         return output
     
     def step(self, x, cache):
-        # x : (B, D)
-        # cache : (h, inputs)
+        # x : (B, D)
+        # cache : (h, inputs)
                 # h : (B, ED, N)
-                # inputs: (B, ED, d_conv-1)
+                # inputs: (B, ED, d_conv-1)
 
-        # output : (B, D)
-        # cache : (h, inputs)
+        # output : (B, D)
+        # cache : (h, inputs)
 
         output, cache = self.mixer.step(self.norm(x), cache)
         output = output + x
@@ -361,7 +364,7 @@ class MambaBlock(nn.Module):
 
         self.config = config
 
-        # projects block input from D to 2*ED (two branches)
+        # projects block input from D to 2*ED (two branches)
         self.in_proj = nn.Linear(config.d_model, 2 * config.d_inner, bias=config.bias)
 
         self.conv1d = nn.Conv1d(in_channels=config.d_inner, out_channels=config.d_inner, 
@@ -369,14 +372,14 @@ class MambaBlock(nn.Module):
                               groups=config.d_inner,
                               padding=config.d_conv - 1)
         
-        # projects x to input-dependent delta, B, C
+        # projects x to input-dependent delta, B, C
         self.x_proj = nn.Linear(config.d_inner, config.dt_rank + 2 * config.d_state, bias=False)
 
-        # projects delta from dt_rank to d_inner
+        # projects delta from dt_rank to d_inner
         self.dt_proj = nn.Linear(config.dt_rank, config.d_inner, bias=True)
 
-        # dt initialization
-        # dt weights
+        # dt initialization
+        # dt weights
         dt_init_std = config.dt_rank**-0.5 * config.dt_scale
         if config.dt_init == "constant":
             nn.init.constant_(self.dt_proj.weight, dt_init_std)
@@ -389,11 +392,11 @@ class MambaBlock(nn.Module):
         dt = torch.exp(
             torch.rand(config.d_inner) * (math.log(config.dt_max) - math.log(config.dt_min)) + math.log(config.dt_min)
         ).clamp(min=config.dt_init_floor)
-        inv_dt = dt + torch.log(-torch.expm1(-dt)) # inverse of softplus: https://github.com/pytorch/pytorch/issues/72759
+        inv_dt = dt + torch.log(-torch.expm1(-dt)) # inverse of softplus: https://github.com/pytorch/pytorch/issues/72759
         with torch.no_grad():
             self.dt_proj.bias.copy_(inv_dt)
         #self.dt_proj.bias._no_reinit = True # initialization would set all Linear.bias to zero, need to mark this one as _no_reinit
-        # todo : explain why removed
+        # todo : explain why removed
 
         # S4D real initialization
         A = torch.arange(1, config.d_state + 1, dtype=torch.float32).repeat(config.d_inner, 1)
@@ -403,7 +406,7 @@ class MambaBlock(nn.Module):
         self.D = nn.Parameter(torch.ones(config.d_inner))
         self.D._no_weight_decay = True
 
-        # projects block output from ED back to D
+        # projects block output from ED back to D
         self.out_proj = nn.Linear(config.d_inner, config.d_model, bias=config.bias)
 
         # used in jamba
@@ -434,7 +437,7 @@ class MambaBlock(nn.Module):
         return dt, B, C
 
     def forward(self, x):
-        # x : (B, L, D)
+        # x : (B, L, D)
         
         # y : (B, L, D)
 
@@ -442,12 +445,12 @@ class MambaBlock(nn.Module):
         _, L, _ = x.shape
 
         xz = self.in_proj(x) # (B, L, 2*ED)
-        x, z = xz.chunk(2, dim=-1) # (B, L, ED), (B, L, ED)
+        x, z = xz.chunk(2, dim=-1) # (B, L, ED), (B, L, ED)
 
-        # x branch
-        x = x.transpose(1, 2) # (B, ED, L)
-        x = self.conv1d(x)[:, :, :L] # depthwise convolution over time, with a short filter
-        x = x.transpose(1, 2) # (B, L, ED)
+        # x branch
+        x = x.transpose(1, 2) # (B, ED, L)
+        x = self.conv1d(x)[:, :, :L] # depthwise convolution over time, with a short filter
+        x = x.transpose(1, 2) # (B, L, ED)
 
         x = F.silu(x)
         y = self.ssm(x, z)
@@ -456,26 +459,26 @@ class MambaBlock(nn.Module):
             output = self.out_proj(y) # (B, L, D)
             return output # the rest of the operations are done in the ssm function (fused with the CUDA pscan)
 
-        # z branch
+        # z branch
         z = F.silu(z)
 
         output = y * z
-        output = self.out_proj(output) # (B, L, D)
+        output = self.out_proj(output) # (B, L, D)
 
         return output
     
     def ssm(self, x, z):
-        # x : (B, L, ED)
+        # x : (B, L, ED)
 
-        # y : (B, L, ED)
+        # y : (B, L, ED)
 
         A = -torch.exp(self.A_log.float()) # (ED, N)
         D = self.D.float()
 
-        deltaBC = self.x_proj(x) # (B, L, dt_rank+2*N)
-        delta, B, C = torch.split(deltaBC, [self.config.dt_rank, self.config.d_state, self.config.d_state], dim=-1) # (B, L, dt_rank), (B, L, N), (B, L, N)
+        deltaBC = self.x_proj(x) # (B, L, dt_rank+2*N)
+        delta, B, C = torch.split(deltaBC, [self.config.dt_rank, self.config.d_state, self.config.d_state], dim=-1) # (B, L, dt_rank), (B, L, N), (B, L, N)
         delta, B, C = self._apply_layernorms(delta, B, C)
-        delta = self.dt_proj.weight @ delta.transpose(1, 2) # (ED, dt_rank) @ (B, L, dt_rank) -> (B, ED, L)
+        delta = self.dt_proj.weight @ delta.transpose(1, 2) # (ED, dt_rank) @ (B, L, dt_rank) -> (B, ED, L)
         # here we just apply the matrix mul operation of delta = softplus(dt_proj(delta))
         # the rest will be applied later (fused if using cuda)
         
@@ -503,61 +506,61 @@ class MambaBlock(nn.Module):
         return y
     
     def selective_scan(self, x, delta, A, B, C, D):
-        # x : (B, L, ED)
-        # Δ : (B, L, ED)
-        # A : (ED, N)
-        # B : (B, L, N)
-        # C : (B, L, N)
-        # D : (ED)
+        # x : (B, L, ED)
+        # Δ : (B, L, ED)
+        # A : (ED, N)
+        # B : (B, L, N)
+        # C : (B, L, N)
+        # D : (ED)
 
-        # y : (B, L, ED)
+        # y : (B, L, ED)
 
-        deltaA = torch.exp(delta.unsqueeze(-1) * A) # (B, L, ED, N)
-        deltaB = delta.unsqueeze(-1) * B.unsqueeze(2) # (B, L, ED, N)
+        deltaA = torch.exp(delta.unsqueeze(-1) * A) # (B, L, ED, N)
+        deltaB = delta.unsqueeze(-1) * B.unsqueeze(2) # (B, L, ED, N)
 
-        BX = deltaB * (x.unsqueeze(-1)) # (B, L, ED, N)
+        BX = deltaB * (x.unsqueeze(-1)) # (B, L, ED, N)
         
         hs = pscan(deltaA, BX)
 
-        y = (hs @ C.unsqueeze(-1)).squeeze(3) # (B, L, ED, N) @ (B, L, N, 1) -> (B, L, ED, 1)
+        y = (hs @ C.unsqueeze(-1)).squeeze(3) # (B, L, ED, N) @ (B, L, N, 1) -> (B, L, ED, 1)
 
         y = y + D * x
 
         return y
     
     def selective_scan_seq(self, x, delta, A, B, C, D):
-        # x : (B, L, ED)
-        # Δ : (B, L, ED)
-        # A : (ED, N)
-        # B : (B, L, N)
-        # C : (B, L, N)
-        # D : (ED)
+        # x : (B, L, ED)
+        # Δ : (B, L, ED)
+        # A : (ED, N)
+        # B : (B, L, N)
+        # C : (B, L, N)
+        # D : (ED)
 
-        # y : (B, L, ED)
+        # y : (B, L, ED)
 
         _, L, _ = x.shape
 
-        deltaA = torch.exp(delta.unsqueeze(-1) * A) # (B, L, ED, N)
-        deltaB = delta.unsqueeze(-1) * B.unsqueeze(2) # (B, L, ED, N)
+        deltaA = torch.exp(delta.unsqueeze(-1) * A) # (B, L, ED, N)
+        deltaB = delta.unsqueeze(-1) * B.unsqueeze(2) # (B, L, ED, N)
 
-        BX = deltaB * (x.unsqueeze(-1)) # (B, L, ED, N)
+        BX = deltaB * (x.unsqueeze(-1)) # (B, L, ED, N)
 
-        h = torch.zeros(x.size(0), self.config.d_inner, self.config.d_state, device=deltaA.device) # (B, ED, N)
+        h = torch.zeros(x.size(0), self.config.d_inner, self.config.d_state, device=deltaA.device) # (B, ED, N)
         hs = []
 
         for t in range(0, L):
             h = deltaA[:, t] * h + BX[:, t]
             hs.append(h)
             
-        hs = torch.stack(hs, dim=1) # (B, L, ED, N)
+        hs = torch.stack(hs, dim=1) # (B, L, ED, N)
 
-        y = (hs @ C.unsqueeze(-1)).squeeze(3) # (B, L, ED, N) @ (B, L, N, 1) -> (B, L, ED, 1)
+        y = (hs @ C.unsqueeze(-1)).squeeze(3) # (B, L, ED, N) @ (B, L, N, 1) -> (B, L, ED, 1)
 
         y = y + D * x
 
         return y
     
-    # -------------------------- inference -------------------------- #
+    # -------------------------- inference -------------------------- #
     """
     Concerning auto-regressive inference
 
@@ -580,65 +583,65 @@ class MambaBlock(nn.Module):
     """
     
     def step(self, x, cache):
-        # x : (B, D)
-        # cache : (h, inputs)
+        # x : (B, D)
+        # cache : (h, inputs)
                 # h : (B, ED, N)
-                # inputs : (B, ED, d_conv-1)
+                # inputs : (B, ED, d_conv-1)
         
-        # y : (B, D)
-        # cache : (h, inputs)
+        # y : (B, D)
+        # cache : (h, inputs)
         
         h, inputs = cache
         
         xz = self.in_proj(x) # (B, 2*ED)
-        x, z = xz.chunk(2, dim=1) # (B, ED), (B, ED)
+        x, z = xz.chunk(2, dim=1) # (B, ED), (B, ED)
 
-        # x branch
+        # x branch
         x_cache = x.unsqueeze(2)
-        x = self.conv1d(torch.cat([inputs, x_cache], dim=2))[:, :, self.config.d_conv-1] # (B, ED)
+        x = self.conv1d(torch.cat([inputs, x_cache], dim=2))[:, :, self.config.d_conv-1] # (B, ED)
 
         x = F.silu(x)
         y, h = self.ssm_step(x, h)
 
-        # z branch
+        # z branch
         z = F.silu(z)
 
         output = y * z
-        output = self.out_proj(output) # (B, D)
+        output = self.out_proj(output) # (B, D)
 
         # prepare cache for next call
-        inputs = torch.cat([inputs[:, :, 1:], x_cache], dim=2) # (B, ED, d_conv-1)
+        inputs = torch.cat([inputs[:, :, 1:], x_cache], dim=2) # (B, ED, d_conv-1)
         cache = (h, inputs)
         
         return output, cache
 
     def ssm_step(self, x, h):
-        # x : (B, ED)
-        # h : (B, ED, N)
+        # x : (B, ED)
+        # h : (B, ED, N)
 
-        # y : (B, ED)
-        # h : (B, ED, N)
+        # y : (B, ED)
+        # h : (B, ED, N)
 
-        A = -torch.exp(self.A_log.float()) # (ED, N) # todo : ne pas le faire tout le temps, puisque c'est indépendant de la timestep
+        A = -torch.exp(self.A_log.float()) # (ED, N) # todo : ne pas le faire tout le temps, puisque c'est indépendant de la timestep
         D = self.D.float()
 
-        deltaBC = self.x_proj(x) # (B, dt_rank+2*N)
+        deltaBC = self.x_proj(x) # (B, dt_rank+2*N)
 
-        delta, B, C = torch.split(deltaBC, [self.config.dt_rank, self.config.d_state, self.config.d_state], dim=-1) # (B, dt_rank), (B, N), (B, N)
+        delta, B, C = torch.split(deltaBC, [self.config.dt_rank, self.config.d_state, self.config.d_state], dim=-1) # (B, dt_rank), (B, N), (B, N)
         delta, B, C = self._apply_layernorms(delta, B, C)
-        delta = F.softplus(self.dt_proj(delta)) # (B, ED)
+        delta = F.softplus(self.dt_proj(delta)) # (B, ED)
 
-        deltaA = torch.exp(delta.unsqueeze(-1) * A) # (B, ED, N)
-        deltaB = delta.unsqueeze(-1) * B.unsqueeze(1) # (B, ED, N)
+        deltaA = torch.exp(delta.unsqueeze(-1) * A) # (B, ED, N)
+        deltaB = delta.unsqueeze(-1) * B.unsqueeze(1) # (B, ED, N)
 
-        BX = deltaB * (x.unsqueeze(-1)) # (B, ED, N)
+        BX = deltaB * (x.unsqueeze(-1)) # (B, ED, N)
 
         if h is None:
-            h = torch.zeros(x.size(0), self.config.d_inner, self.config.d_state, device=deltaA.device) # (B, ED, N)
+            h = torch.zeros(x.size(0), self.config.d_inner, self.config.d_state, device=deltaA.device) # (B, ED, N)
 
-        h = deltaA * h + BX # (B, ED, N)
+        h = deltaA * h + BX # (B, ED, N)
 
-        y = (h @ C.unsqueeze(-1)).squeeze(2) # (B, ED, N) @ (B, N, 1) -> (B, ED, 1)
+        y = (h @ C.unsqueeze(-1)).squeeze(2) # (B, ED, N) @ (B, N, 1) -> (B, ED, 1)
 
         y = y + D * x
 
@@ -651,7 +654,7 @@ class RMSNorm(nn.Module):
         self.use_mup = use_mup
         self.eps = eps
 
-        # https://arxiv.org/abs/2404.05728, RMSNorm gains prevents muTransfer (section 4.2.3)
+        # https://arxiv.org/abs/2404.05728, RMSNorm gains prevents muTransfer (section 4.2.3)
         if not use_mup:
             self.weight = nn.Parameter(torch.ones(d_model))
 
@@ -710,14 +713,14 @@ class JambaLMConfig:
 
     dt_min: float = 0.001
     dt_max: float = 0.1
-    dt_init: str = "random" # "random" or "constant"
+    dt_init: str = "random" # "random" or "constant"
     dt_scale: float = 1.0
     dt_init_floor = 1e-4
     bias: bool = False
     conv_bias: bool = True
     inner_layernorms: bool = True
     use_cuda: bool = False
-    pscan: bool = True # use parallel scan mode or sequential mode when training
+    pscan: bool = True # use parallel scan mode or sequential mode when training
 
     # attention related
     num_attention_heads: int = 32
@@ -774,7 +777,7 @@ def from_pretrained(name: str):
 
     model_hf = AutoModelForCausalLM.from_pretrained(name, torch_dtype=torch.float32, use_mamba_kernels=False, device_map="auto", trust_remote_code=True)
         
-    # copy config data
+    # copy config data
     config = JambaLMConfig(vocab_size=model_hf.config.vocab_size, d_model=model_hf.config.hidden_size, n_layers=model_hf.config.num_hidden_layers, 
                                 rms_norm_eps=model_hf.config.rms_norm_eps, mlp_size=model_hf.config.intermediate_size, inner_layernorms=model_hf.config.mamba_inner_layernorms,
                                 expand_factor=model_hf.config.mamba_expand, dt_rank=model_hf.config.mamba_dt_rank, d_state=model_hf.config.mamba_d_state,
@@ -788,7 +791,7 @@ def from_pretrained(name: str):
 
     model = JambaLM(config)
 
-    # copy weights
+    # copy weights
     for name, param in model_hf.named_parameters():
         name = name.replace("model.", "jamba.")
         
@@ -831,7 +834,7 @@ class JambaLM(nn.Module):
     def forward(self, tokens):
         # tokens : (B, L)
 
-        # logits : (B, L, vocab_size)
+        # logits : (B, L, vocab_size)
         # router_logits : (B*L, n_experts) if n_experts>1
 
         x = self.embedding(tokens)
@@ -860,11 +863,11 @@ class JambaLM(nn.Module):
 
         return logits, caches
 
-    # TODO process prompt in parallel, and pass in sequential mode when prompt is finished ?
+    # TODO process prompt in parallel, and pass in sequential mode when prompt is finished ?
     def generate(self, tokenizer, prompt: str, max_tokens: int = 50, batch_size: int = 1, sample: bool = True, top_k: int = 40, temperature: float = 1.0):
         self.eval()
 
-        input_ids = tokenizer(prompt, return_tensors='pt').input_ids.to(next(self.parameters()).device) # (1, num_tokens)
+        input_ids = tokenizer(prompt, return_tensors='pt').input_ids.to(next(self.parameters()).device) # (1, num_tokens)
         input_ids = input_ids.repeat(batch_size, 1)
 
         # caches is a list of cache, one per layer
@@ -874,23 +877,23 @@ class JambaLM(nn.Module):
 
         for i in range(input_ids.size(1) + max_tokens - 1):
             with torch.no_grad():
-                # forward the new output, get new cache
-                next_token_logits, caches = self.step(input_ids[:, [i]], caches) # (batch_size, 1, vocab_size), caches
+                # forward the new output, get new cache
+                next_token_logits, caches = self.step(input_ids[:, [i]], caches) # (batch_size, 1, vocab_size), caches
                 next_token_logits = next_token_logits.squeeze(1)
 
-            # sample (no sampling when the prompt is being processed)
+            # sample (no sampling when the prompt is being processed)
             if i+1 >= input_ids.size(1):
-                probs = F.softmax(next_token_logits / temperature, dim=-1) # (batch_size, vocab_size)
+                probs = F.softmax(next_token_logits / temperature, dim=-1) # (batch_size, vocab_size)
 
                 if top_k is not None:
-                    values, _ = torch.topk(probs, k=top_k) # (batch_size, k) ordered from lowest to biggest
+                    values, _ = torch.topk(probs, k=top_k) # (batch_size, k) ordered from lowest to biggest
                     probs[probs < values[:, -1, None]] = 0
                     probs = probs / probs.sum(axis=1, keepdims=True)
 
                 if sample:
-                    next_token = torch.multinomial(probs, num_samples=1).squeeze(1) # (batch_size)
+                    next_token = torch.multinomial(probs, num_samples=1).squeeze(1) # (batch_size)
                 else:
-                    next_token = torch.argmax(probs, dim=-1) # (batch_size)
+                    next_token = torch.argmax(probs, dim=-1) # (batch_size)
 
                 input_ids = torch.cat([input_ids, next_token.unsqueeze(1)], dim=1)
 
@@ -1249,21 +1252,25 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
 MIN_LAYERS, MAX_LAYERS = 4, 20
 NUM_CLASSES = 4
-MUTATION_RATE = 0.15
+MUTATION_RATE = 0.25
 POP_SIZE = 30
 GENERATIONS = 100
 ELITISM = 1
 LEARNING_RATE = 4e-4
-BATCH_SIZE = 16
-STEPS_1, STEPS_2 = 500, 500
+BATCH_SIZE = 32
+STEPS_1, STEPS_2 = 100, 200
 FINE_TUNE = True
+
+BATCH_SIZE = 32
+STEPS_1 = 150
 
 # Benchmark Mini-Jamba original 
 # BASELINE_LATENCY = 0.35 
 # BASELINE_PARAMS = 70_000_000
 
-BASELINE_LATENCY = 0.25
+BASELINE_LATENCY = 0.01
 BASELINE_PARAMS = 50_000_000
+
 
 class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):
@@ -1280,7 +1287,7 @@ class JambaClassifier(nn.Module):
         pooled = hidden_states.mean(dim=1) 
         return self.classifier(pooled)
 
-def load_agnews(tokenizer, n_train=3000, n_val=1500):
+def load_agnews(tokenizer, n_train=25000, n_val=1000):
     """Loads the AG News dataset and pre-tokenizes it using the provided tokenizer. It returns tokenized train and validation datasets ready for PyTorch."""
     print("Pre-tokenizing dataset...")
     ds = load_dataset("ag_news")
@@ -1301,14 +1308,20 @@ def load_agnews(tokenizer, n_train=3000, n_val=1500):
     
     return tokenized_train, tokenized_val
 
-def train_model(model, train_ds, steps, val_ds=None, patience=2):
+
+def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0"):
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
     loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     
     best_f1 = 0
+    best_weights = copy.deepcopy(model.state_dict())
     no_improve_count = 0
-    val_check_interval = 50 # Early stopping check every 50 steps
+    val_check_interval = 100 
+    
+    # Listas para guardar métricas apenas se gen0 for True para não gastar RAM à toa
+    train_losses = [] if gen0 else None
+    val_f1s = [] if gen0 else None
     
     start_time = time.time()
     step_count = 0
@@ -1319,27 +1332,63 @@ def train_model(model, train_ds, steps, val_ds=None, patience=2):
             
             input_ids, labels = batch["input_ids"].to(DEVICE), batch["label"].to(DEVICE)
             optimizer.zero_grad()
-            loss = F.cross_entropy(model(input_ids), labels)
+            logits = model(input_ids)
+            loss = F.cross_entropy(logits, labels)
             loss.backward()
             optimizer.step()
+            
+            # Só guarda a loss se estivermos na Geração 0
+            if gen0:
+                train_losses.append(loss.item())
+            
             step_count += 1
             
-            # --- Lógica de Early Stopping ---
+            # --- Verificação de Validação & Early Stopping ---
             if step_count % val_check_interval == 0 and val_ds is not None:
                 current_f1, _ = evaluate_model(model, val_ds)
-                model.train() # Volta ao modo treino após avaliar
+                model.train()
+                
+                if gen0:
+                    val_f1s.append((step_count, current_f1))
                 
                 if current_f1 > best_f1:
                     best_f1 = current_f1
+                    best_weights = copy.deepcopy(model.state_dict())
                     no_improve_count = 0
                 else:
                     no_improve_count += 1
                 
+                # O Early Stopping corre sempre, mas o gráfico só é gerado na Gen 0
                 if no_improve_count >= patience:
-                    # print(f"Early Stopping no passo {step_count}")
-                    return time.time() - start_time
-                    
-    return time.time() - start_time
+                    model.load_state_dict(best_weights)
+                    if gen0:
+                        save_training_plot(train_losses, val_f1s, ind_id)
+                    return time.time() - start_time, train_losses
+    
+    # Se chegarmos ao fim dos steps sem disparar o Early Stopping
+    if gen0:
+        save_training_plot(train_losses, val_f1s, ind_id)
+        
+    return time.time() - start_time, train_losses
+
+def save_training_plot(losses, f1s, ind_id):
+    """Gera um gráfico da evolução do treino."""
+    fig, ax1 = plt.subplots()
+
+    ax1.set_xlabel('Steps')
+    ax1.set_ylabel('Train Loss', color='tab:red')
+    ax1.plot(losses, color='tab:red', alpha=0.5, label='Loss')
+    ax1.tick_params(axis='y', labelcolor='tab:red')
+
+    ax2 = ax1.twinx()
+    ax2.set_ylabel('Val F1', color='tab:blue')
+    steps, f1_values = zip(*f1s) if f1s else ([], [])
+    ax2.plot(steps, f1_values, color='tab:blue', marker='o', label='F1')
+    ax2.tick_params(axis='y', labelcolor='tab:blue')
+
+    plt.title(f'Training Progress - Indivíduo {ind_id}')
+    plt.savefig(f'../plots/training_plot_{ind_id}.png')
+    plt.close()
 
 
 # Utils
@@ -1347,21 +1396,30 @@ def train_model(model, train_ds, steps, val_ds=None, patience=2):
 def evaluate_model(model, val_ds):
     """Returns F1 score and average latency per sample on the validation set."""
     model.eval()
-    loader = DataLoader(val_ds, batch_size=1)
+    loader = DataLoader(val_ds, batch_size=BATCH_SIZE)
     all_preds, all_labels, latencies = [], [], []
     
     for batch in loader:
         input_ids = batch["input_ids"].to(DEVICE)
-        torch.cuda.synchronize() # Espera que a GPU termine
+        labels = batch["label"] # Mantém no CPU para facilitar
+        
+        torch.cuda.synchronize() 
         start_lat = time.perf_counter()
         logits = model(input_ids)
         torch.cuda.synchronize() 
         latencies.append(time.perf_counter() - start_lat)
-        all_preds.append(torch.argmax(logits, dim=-1).cpu().item())
-        all_labels.append(batch["label"].item())
+        
+        preds = torch.argmax(logits, dim=-1).cpu() 
+        
+   
+        all_preds.extend(preds.numpy().tolist())
+        all_labels.extend(labels.numpy().tolist())
             
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    return f1, (sum(latencies) / len(latencies))
+    # Latência média por amostra (dividimos pelo batch size para ser real)
+    avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE
+    
+    return f1, avg_lat
 
 
 def get_trainable_state_dict(model):
@@ -1472,7 +1530,7 @@ def apply_genotype(model, genotype):
         else:
             layer.active = False
 
-def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None):
+def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None, gen0=False, ind_id="0"):
     """Evaluates an individual by applying its genotype to a fresh model, optionally loading inherited weights, 
     training it, and then evaluating its F1 score and latency. It returns the trainable weights for inheritance
     and a stats dictionary for fitness calculation."""
@@ -1484,8 +1542,9 @@ def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited
         model.load_state_dict(inherited_weights, strict=False)
     
     setup_model_trainability(model, full_fine_tune=FINE_TUNE)
+
     
-    train_time = train_model(model, train_ds, steps, val_ds=val_ds, patience=2)
+    train_time, losses = train_model(model, train_ds, steps, val_ds=val_ds, patience=3, gen0=gen0, ind_id=ind_id)
     f1, latency = evaluate_model(model, val_ds)
 
     print(f"Evaluated Genotype: {genotype} | F1: {f1:.4f} | Latency: {latency:.4f}s | Train Time: {train_time:.2f}s")
@@ -1508,22 +1567,24 @@ def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited
     }
     
     # Return only trainable weights for inheritance
-    return {k: v.cpu().clone() for k, v in model.state_dict().items() if v.requires_grad}, stats
+    return {k: v.cpu().clone() for k, v in model.state_dict().items() if v.requires_grad}, stats, losses
 
 def fitness(population_list):
-    """Calculates fitness for each individual in the population based on their F1 score, latency, and parameter count."""
-
     if not population_list: return
-
-    avg_f1 = sum(ind['stats']['f1'] for ind in population_list) / len(population_list)
 
     for ind in population_list:
         stats = ind['stats']
-        base_score = stats['f1'] ** 4
-        lat_ratio = stats['latency'] / BASELINE_LATENCY
-        param_ratio = stats['params'] / BASELINE_PARAMS
-        penalty = math.exp(-(0.5 * lat_ratio + 0.2 * param_ratio))
-        ind['fitness'] = max(0.0001, base_score * penalty)
+        f1 = stats['f1']
+        
+        base_score = f1
+
+        # lat_ratio =  BASELINE_LATENCY / stats['latency']
+        # param_ratio = BASELINE_PARAMS / stats['params']  
+        
+        # penalty = 1.0 * lat_ratio + 0.5 * param_ratio # Ver o porque de eles usarem o exp 
+
+        ind['fitness'] = base_score # * penalty
+
 
 
 def smart_weight_inheritance(child_model, parent_weights, child_genotype, parent_genotype):
@@ -1550,85 +1611,133 @@ def smart_weight_inheritance(child_model, parent_weights, child_genotype, parent
     # Carregar apenas o que foi filtrado
     child_model.load_state_dict(new_weights, strict=False)
 
+def plot_population_vs_best(data):
+    import numpy as np
+    plt.figure(figsize=(12, 6))
+    
+    # 1. Extrair todas as curvas de loss
+    all_curves = [d['losses'] for d in data]
+    # Garantir que todas têm o mesmo tamanho para a média (padding)
+    max_len = STEPS_1
+    padded = np.array([c + [c[-1]] * (max_len - len(c)) for c in all_curves])
+    
+    # 2. Calcular Média
+    mean_loss = np.mean(padded, axis=0)
+    
+    # 3. Identificar o Melhor Indivíduo (por F1)
+    best_idx = np.argmax([d['f1'] for d in data])
+    best_curve = padded[best_idx]
+    
+    # 4. Plot
+    steps = np.arange(max_len)
+    plt.plot(steps, mean_loss, label='Population Average', color='black', linewidth=2, linestyle='--')
+    plt.plot(steps, best_curve, label=f'Best model (F1: {data[best_idx]["f1"]:.4f})', color='blue', linewidth=2)
+    
+    # Estética
+    plt.fill_between(steps, np.min(padded, axis=0), np.max(padded, axis=0), color='gray', alpha=0.1, label='Range da População')
+    plt.xlabel('Training Steps')
+    plt.ylabel('Cross-Entropy Loss')
+    plt.title('Convergência na Geração 0: Média vs Melhor')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig('../plots/gen0_population_analysis.png')
+    plt.close()
+
 # --- EVOLUTION LOOP ---
 def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1):
-    """Main evolution loop that initializes the population, evaluates fitness, 
-    performs selection, crossover, mutation, and refinement over multiple generations. 
-    It returns the best individual found at the end of evolution."""
-
     history_logs = []
-    print("Steps per evaluation: ", STEPS_1)
+    gen0_data = []
     
-    # Init Population
+    gen_start_time = time.time()
+
+    print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
-    for _ in range(pop_size):
+    for i in range(pop_size): #*2 for phd
         g = generate_random_genotype()
-        w, s = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1)
-        population.append({'genotype': g, 'weights': w, 'stats': s})
+        unique_id = f"gen0_step1_ind{i}"
+        # Aqui geramos gráficos apenas na Gen 0 para calibração
+        w, s, losses = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1, gen0=True, ind_id=unique_id)
+        population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
 
     fitness(population)
+    population = sorted(population, key=lambda x: x['fitness'], reverse=True)
+    gen0_data = [{'losses': ind['losses'], 'f1': ind['stats']['f1']} for ind in population]
 
+    
+    # print("--- Generation 0: Refining survivors (Step 2) ---")
+    # for i, ind in enumerate(population):
+    #     unique_id = f"gen0_step2_ind{i}"
+    #     w, s, l_s2 = evaluate_individual(base_model, ind['genotype'], train_ds, val_ds, STEPS_2, 
+    #                                inherited_weights=ind['weights'], gen0=True, ind_id=unique_id)
+
+    #     full_losses = ind['temp_losses'] + l_s2
+    #     gen0_data.append({'losses': full_losses, 'f1': s['f1']})
+    #     ind['weights'], ind['stats'] = w, s
+    #     del ind['temp_losses']
+
+    gen_duration = (time.time() - gen_start_time) / 60
+    
+    # Log da Geração 0 (agora com treino completo!)
     for i, ind in enumerate(sorted(population, key=lambda x: x['fitness'], reverse=True)):
         history_logs.append({
-            'generation': 0,
-            'rank': i,
-            'fitness': ind['fitness'],
-            'f1': ind['stats']['f1'],
-            'latency': ind['stats']['latency'],
-            'params': ind['stats']['params'], 
-            'depth': ind['stats']['depth'],   
-            'genotype': str(ind['genotype'])
+            'generation': 0, 'rank': i, 'fitness': ind['fitness'],
+            'f1': ind['stats']['f1'], 'latency': ind['stats']['latency'],
+            'params': ind['stats']['params'], 'depth': ind['stats']['depth'],
+            'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
         })
+
+    pd.DataFrame(history_logs).to_csv("agnews_evolution_results_startover_without_phd_500.csv", index=False)
+    print(f"Gen 0 Best: F1 {population[0]['stats']['f1']:.4f}")
+
+    # --- GERAR O GRÁFICO FINAL DA POPULAÇÃO ---
+    plot_population_vs_best(gen0_data)
     
-    for gen in range(generations):
+    # --- LIMPEZA DE RAM ---
+    del gen0_data
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # 3. LOOP DE EVOLUÇÃO
+    for gen in range(1, generations):
         gen_start_time = time.time()
-        fitness(population)
-        population = sorted(population, key=lambda x: x['fitness'], reverse=True)
         
         # Elitism
         new_candidates = population[:elitism]
 
-        while len(new_candidates) < (pop_size * 2):
-            # Selection
+        while len(new_candidates) < pop_size: # * 2 para aplicar phd
             p1, p2 = tournament_selection(population), tournament_selection(population)
-            # Crossover + Mutation
             temp_g, child_w = crossover(p1, p2)
             child_g = mutate(temp_g, MUTATION_RATE)
 
-            # Lamarckian Inheritance
-            # parent_w = p1['weights'] if p1['fitness'] > p2['fitness'] else p2['weights']
-            # smart_weight_inheritance(base_model, parent_w, child_g, p1['genotype'] if p1['fitness'] > p2['fitness'] else p2['genotype'])
-            
-            # Evaluation of the child
-            w, s = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, child_w)
+
+            w, s, _ = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, inherited_weights=child_w)
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
 
-        # Hurdle Selection: Step 1
-        fitness(new_candidates)
-        new_candidates = sorted(new_candidates, key=lambda x: x['fitness'], reverse=True)
-        population = new_candidates[:pop_size]
 
-        # Hurdle Selection: Step 2 (Refinement)
-        for ind in population:
-            w, s = evaluate_individual(base_model, ind['genotype'], train_ds, val_ds, STEPS_2, ind['weights'])
-            ind['weights'], ind['stats'] = w, s
+        population = new_candidates
+        fitness(population)
+        population = sorted(population, key=lambda x: x['fitness'], reverse=True)
 
+        # Refinamento: Step 2 para os sobreviventes (completar a época)
+        # for ind in population:
+        #     # Só treinamos o Step 2 se o indivíduo ainda não tiver o treino completo 
+        #     # (evita retreinar elites desnecessariamente)
+        #     if ind['stats'].get('total_steps', 0) < (STEPS_1 + STEPS_2):
+        #         w, s, _ = evaluate_individual(base_model, ind['genotype'], train_ds, val_ds, STEPS_2, inherited_weights=ind['weights'])
+        #         ind['weights'], ind['stats'] = w, s
+
+        # Logs e Monitorização
         gen_duration = (time.time() - gen_start_time) / 60
-        
+
         for i, ind in enumerate(population):
             history_logs.append({
-                'generation': gen,
-                'rank': i,
-                'fitness': ind['fitness'],
-                'f1': ind['stats']['f1'],
-                'latency': ind['stats']['latency'],
-                'params': ind['stats'].get('params', 0), 
-                'depth': ind['stats'].get('depth', len(ind['genotype'])),
-                'gen_time_min': gen_duration,
-                'genotype': str(ind['genotype'])
+                'generation': gen, 'rank': i, 'fitness': ind['fitness'],
+                'f1': ind['stats']['f1'], 'latency': ind['stats']['latency'],
+                'params': ind['stats']['params'], 'depth': ind['stats']['depth'],
+                'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
             })
 
-        pd.DataFrame(history_logs).to_csv("agnews_evolution_results.csv", index=False)
+        pd.DataFrame(history_logs).to_csv("agnews_evolution_results_startover_without_phd_500.csv", index=False)
         print(f"Gen {gen} Best: F1 {population[0]['stats']['f1']:.4f}")
         
         gc.collect()

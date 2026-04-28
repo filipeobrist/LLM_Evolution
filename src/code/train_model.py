@@ -732,9 +732,9 @@ class JambaClassifier(nn.Module):
 # ------------------------------------------------------------
 # 5.  Intensive training script
 # ------------------------------------------------------------
-CHECKPOINT_NAME = "best_model_run_1_seed_42_actual_experiment.pt"
-OUTPUT_CSV = "trained_model_results_run_1_seed_42_actual_experiment.csv"
-MODEL_SAVE_PATH = "trained_model_run_1_seed_42_actual_experiment.pt"
+CHECKPOINT_NAME = "best_model_run_3_seed_999_actual_experiment.pt"
+OUTPUT_CSV = "trained_model_results_run_3_seed_999_actual_experiment.csv"
+MODEL_SAVE_PATH = "trained_model_run_3_seed_999_actual_experiment.pt"
 BATCH_SIZE = 32
 EPOCHS = 4
 LEARNING_RATE = 3e-5

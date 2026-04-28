@@ -1247,10 +1247,9 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 # Configurations start here
-# --- CONSTANTS & CONFIG ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
-MIN_LAYERS, MAX_LAYERS = 4, 20
+MIN_LAYERS, MAX_LAYERS = 4, 20 # Talvez meter menos que 3
 NUM_CLASSES = 4
 MUTATION_RATE = 0.10
 CROSSOVER_RATE = 0.8 
@@ -1260,15 +1259,9 @@ ELITISM = 1
 LEARNING_RATE = 4e-4
 FINE_TUNE = True
 
-BATCH_SIZE = 32
-STEPS_1 = 50
+BATCH_SIZE = 16
+STEPS_1 = 100
 
-# Benchmark Mini-Jamba original 
-# BASELINE_LATENCY = 0.35 
-# BASELINE_PARAMS = 70_000_000
-
-BASELINE_LATENCY = 0.01
-BASELINE_PARAMS = 50_000_000
 
 
 class JambaClassifier(nn.Module):
@@ -1342,7 +1335,7 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
             
             step_count += 1
             
-            # --- Verificação de Validação & Early Stopping ---
+            # Verificação de Validação & Early Stopping
             if step_count % val_check_interval == 0 and val_ds is not None:
                 current_f1, _ = evaluate_model(model, val_ds)
                 model.train()
@@ -1484,14 +1477,14 @@ def mutate(genotype, mutation_rate=0.10):
     # 15% de chance de alterar o número de camadas
     if random.random() < 0.15: 
         if random.random() > 0.5 and len(new_genotype) < MAX_LAYERS:
-            # Insere em qualquer posição (agora é seguro!)
+            # Insere em qualquer posição
             new_genotype.insert(random.randint(0, len(new_genotype)), random.randint(0, 1))
         elif len(new_genotype) > MIN_LAYERS:
             new_genotype.pop(random.randint(0, len(new_genotype) - 1))
             
     return new_genotype
 
-# --- SELECTION ---
+# SELECTION
 
 def tournament_selection(population, k=3):
     # 1. Pick k random individuals from the whole population
@@ -1502,7 +1495,7 @@ def tournament_selection(population, k=3):
     
     return winner
 
-# --- GENOTYPE ---
+# GENOTYPE 
 
 def apply_genotype(model, genotype):
     """Applies the genotype to the model by activating/deactivating layers and setting them to Mamba or Attention based on the gene value."""
@@ -1525,7 +1518,7 @@ def evaluate_individual(config, genotype, train_ds, val_ds, steps,
     model = JambaLM(config, genotype).to(DEVICE)
     
     if inherited_weights is not None and parent_genotype is not None:
-        # Optional: smart weight inheritance (see next section)
+        # Turned off for now
         smart_weight_inheritance(model, inherited_weights, genotype, parent_genotype)
     
     classifier = JambaClassifier(model, NUM_CLASSES).to(DEVICE)
@@ -1536,7 +1529,6 @@ def evaluate_individual(config, genotype, train_ds, val_ds, steps,
                                      gen0=gen0, ind_id=ind_id)
     f1, latency = evaluate_model(classifier, val_ds)
     
-    # Count trainable parameters (all because we train from scratch)
     total_params = sum(p.numel() for p in classifier.parameters() if p.requires_grad)
     
     stats = {
@@ -1546,8 +1538,11 @@ def evaluate_individual(config, genotype, train_ds, val_ds, steps,
     }
     
     print(f"Evaluated Genotype: {genotype} | F1: {f1:.4f} | Latency: {latency:.4f}s | Train Time: {train_time:.2f}s")
+
     
-    # Return the trainable state dict for potential inheritance (unused now)
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
     return get_trainable_state_dict(classifier), stats, losses
 
 def fitness(population_list):
@@ -1569,17 +1564,18 @@ def fitness(population_list):
 
 
 def smart_weight_inheritance(child_model, parent_weights, child_genotype, parent_genotype):
+    # Errado
     child_dict = child_model.state_dict()
     new_weights = {}
 
     for name, param in child_dict.items():
-        # Se o peso não for de uma camada evoluível (ex: embeddings, final_norm, classifier)
+        # Se o peso não for de uma camada evoluível
         if "layers" not in name:
             if name in parent_weights:
                 new_weights[name] = parent_weights[name]
             continue
         
-        # Extrair o índice da camada: "lm.jamba.layers.0.mamba.weights" -> 0
+        # Extrair o índice da camada
         parts = name.split('.')
         layer_idx = int(parts[parts.index("layers") + 1])
         
@@ -1589,31 +1585,31 @@ def smart_weight_inheritance(child_model, parent_weights, child_genotype, parent
                 if name in parent_weights:
                     new_weights[name] = parent_weights[name]
     
-    # Carregar apenas o que foi filtrado
+
     child_model.load_state_dict(new_weights, strict=False)
 
 def plot_population_vs_best(data):
     plt.figure(figsize=(12, 6))
     
-    # 1. Extrair todas as curvas de loss
+    # Extrair todas as curvas de loss
     all_curves = [d['losses'] for d in data]
-    # Garantir que todas têm o mesmo tamanho para a média (padding)
+
     max_len = STEPS_1
     padded = np.array([c + [c[-1]] * (max_len - len(c)) for c in all_curves])
     
-    # 2. Calcular Média
+    # Calcular Média
     mean_loss = np.mean(padded, axis=0)
     
-    # 3. Identificar o Melhor Indivíduo (por F1)
+    # Identificar o Melhor Indivíduo (por F1)
     best_idx = np.argmax([d['f1'] for d in data])
     best_curve = padded[best_idx]
     
-    # 4. Plot
+    # Plot
     steps = np.arange(max_len)
     plt.plot(steps, mean_loss, label='Population Average', color='black', linewidth=2, linestyle='--')
     plt.plot(steps, best_curve, label=f'Best model (F1: {data[best_idx]["f1"]:.4f})', color='blue', linewidth=2)
     
-    # Estética
+
     plt.fill_between(steps, np.min(padded, axis=0), np.max(padded, axis=0), color='gray', alpha=0.1, label='Range da População')
     plt.xlabel('Training Steps')
     plt.ylabel('Cross-Entropy Loss')
@@ -1623,14 +1619,14 @@ def plot_population_vs_best(data):
     plt.savefig('../plots/gen0_population_analysis.png')
     plt.close()
 
-# --- EVOLUTION LOOP ---
+# EVOLUTION LOOP 
 def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1, run_name="evolution_run"):
     history_logs = []
     gen0_data = []
     best_overall_f1 = -1.0
     best_overall_data = {}
     
-    # --- Geração 0 ---
+    # Geração 0 
     gen_start_time = time.time()
     print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
@@ -1662,7 +1658,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     plot_population_vs_best(gen0_data)
     
 
-    # 3. LOOP DE EVOLUÇÃO
+    # LOOP DE EVOLUÇÃO
     for gen in range(1, generations):
         gen_start_time = time.time()
         new_candidates = population[:elitism]
@@ -1670,7 +1666,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
         print(f"--- Generation {gen}: Evolving population ---")
         
         while len(new_candidates) < pop_size:
-            # 1. SELEÇÃO E CROSSOVER
+            # SELEÇÃO E CROSSOVER
             if random.random() < CROSSOVER_RATE:
                 p1, p2 = tournament_selection(population), tournament_selection(population)
                 child_g = crossover(p1['genotype'], p2['genotype'])
@@ -1679,12 +1675,11 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
                 parent = tournament_selection(population)
                 child_g = list(parent['genotype'])
             
-            # 2. MUTAÇÃO (Sempre aplicada ao genótipo resultante)
+            # MUTAÇÃO 
             child_g = mutate(child_g, MUTATION_RATE)
 
-            # 3. AVALIAÇÃO DO ZERO
+            # AVALIAÇÃO DO ZERO
             # Passamos inherited_weights=None para forçar o modelo a inicializar do zero
-            # O indivíduo é avaliado apenas pelo potencial da sua arquitetura
             w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None)
             
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
@@ -1697,7 +1692,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
         if current_gen_best['stats']['f1'] > best_overall_f1:
             best_overall_f1 = current_gen_best['stats']['f1']
-            # Guardamos uma CÓPIA PROFUNDA dos pesos e dados
+            # Guardamos
             best_overall_data = {
                 'genotype': current_gen_best['genotype'],
                 'state_dict': copy.deepcopy(current_gen_best['weights']),
@@ -1731,6 +1726,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 SEEDS = [42, 123, 999, 2024, 7]
+SEEDS = [2024, 7]
 
 def set_seed(seed):
     random.seed(seed)
@@ -1741,6 +1737,10 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+
+# Clean up before starting
+gc.collect()
+torch.cuda.empty_cache()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Running on: {device}")
@@ -1761,11 +1761,11 @@ def run_thesis_experiment():
         print(f"Iniciating RUN {run_idx + 1}/5 (SEED: {seed})")
         print(f"{'='*30}")
             
-        # 1. Preparar ambiente para este run
+        # Preparar ambiente para este run
         set_seed(seed)
         run_name = f"run_{run_idx+1}_seed_{seed}_actual_experiment"
             
-        # 2. Reinicializar tudo para evitar "leak" de memória entre runs
+        # Reinicializar tudo para evitar "leak" de memória entre runs
         gc.collect()
         torch.cuda.empty_cache()
 
