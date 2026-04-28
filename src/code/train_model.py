@@ -17,7 +17,7 @@ import numpy as np
 import time
 
 # ------------------------------------------------------------
-# 1.  Parallel scan (unaltered)
+# 1.  Parallel scan
 # ------------------------------------------------------------
 def npo2(len):
     return 2 ** math.ceil(math.log2(len))
@@ -135,7 +135,7 @@ class PScan(torch.autograd.Function):
 pscan = PScan.apply
 
 # ------------------------------------------------------------
-# 2.  Mamba components (unaltered except config)
+# 2.  Mamba components
 # ------------------------------------------------------------
 @dataclass
 class MambaConfig:
@@ -359,7 +359,7 @@ class RMSNorm(nn.Module):
             return output
 
 # ------------------------------------------------------------
-# 3.  Jamba model – now GENOTYPE‑AWARE
+# 3.  Jamba model 
 # ------------------------------------------------------------
 @dataclass
 class JambaLMConfig:
@@ -712,7 +712,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 # ------------------------------------------------------------
-# 4.  Classifier wrapper (reused from earlier – safe)
+# 4.  Classifier wrapper
 # ------------------------------------------------------------
 class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):
@@ -730,7 +730,7 @@ class JambaClassifier(nn.Module):
         return self.classifier(pooled)
 
 # ------------------------------------------------------------
-# 5.  Intensive training script
+#
 # ------------------------------------------------------------
 CHECKPOINT_NAME = "best_model_run_3_seed_999_actual_experiment.pt"
 OUTPUT_CSV = "trained_model_results_run_3_seed_999_actual_experiment.csv"
@@ -739,7 +739,7 @@ BATCH_SIZE = 32
 EPOCHS = 4
 LEARNING_RATE = 3e-5
 
-def evaluate_full(model, loader, device, criterion):
+def evaluate(model, loader, device, criterion):
     model.eval()
     all_preds, all_labels = [], []
     total_loss = 0
@@ -762,7 +762,7 @@ def evaluate_full(model, loader, device, criterion):
     avg_lat = np.mean(latencies)
     return {"acc": acc, "prec": prec, "rec": rec, "f1": f1, "loss": avg_loss, "lat": avg_lat}
 
-def run_intensive_benchmark():
+def train_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Iniciando Benchmark Final em: {device}")
 
@@ -824,7 +824,7 @@ def run_intensive_benchmark():
             train_loss += loss.item()
         avg_train_loss = train_loss / len(train_loader)
 
-        metrics = evaluate_full(model, test_loader, device, criterion)
+        metrics = evaluate(model, test_loader, device, criterion)
         current_f1 = metrics["f1"]
 
         if current_f1 > best_f1:
@@ -857,4 +857,4 @@ def run_intensive_benchmark():
     print(f"Pesos finais guardados em: {MODEL_SAVE_PATH}")
 
 if __name__ == "__main__":
-    run_intensive_benchmark()
+    train_model()
