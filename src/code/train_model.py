@@ -748,9 +748,14 @@ def evaluate(model, loader, device, criterion):
         for batch in loader:
             input_ids = batch["input_ids"].to(device)
             labels = batch["label"].to(device)
-            start_lat = time.time()
-            outputs = model(input_ids)                            # no attention_mask
-            latencies.append((time.time() - start_lat) / input_ids.size(0))
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+            outputs = model(input_ids)
+            end_event.record()
+            torch.cuda.synchronize()
+            elapsed_time_ms = start_event.elapsed_time(end_event)
+            latencies.append(elapsed_time_ms / input_ids.size(0))
             loss = criterion(outputs, labels)
             total_loss += loss.item()
             preds = torch.argmax(outputs, dim=1)
@@ -797,7 +802,7 @@ def train_model():
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Modelo reconstruído com {num_params:,} parâmetros.")
 
-    # 3. Treino intensivo
+    # 3. Treino 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
     total_steps = len(train_loader) * EPOCHS
     scheduler = get_linear_schedule_with_warmup(optimizer,
@@ -806,6 +811,9 @@ def train_model():
     criterion = nn.CrossEntropyLoss()
     best_f1 = -1.0
     history = []
+
+    # Start a clock to measure total training time
+    start_time = time.time()
 
     for epoch in range(EPOCHS):
         model.train()
@@ -855,6 +863,7 @@ def train_model():
     print(f"\nBenchmark concluído!")
     print(f"Logs guardados em: {OUTPUT_CSV}")
     print(f"Pesos finais guardados em: {MODEL_SAVE_PATH}")
+    print(f"Tempo total de treino: {time.time() - start_time:.2f} segundos")
 
 if __name__ == "__main__":
     train_model()

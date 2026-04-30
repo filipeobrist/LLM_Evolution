@@ -1259,8 +1259,8 @@ ELITISM = 1
 LEARNING_RATE = 4e-4
 FINE_TUNE = True
 
-BATCH_SIZE = 16
-STEPS_1 = 100
+BATCH_SIZE = 32
+STEPS_1 = 200
 
 
 
@@ -1279,7 +1279,7 @@ class JambaClassifier(nn.Module):
         pooled = hidden_states.mean(dim=1) 
         return self.classifier(pooled)
 
-def load_agnews(tokenizer, n_train=15000, n_val=1000):
+def load_agnews(tokenizer, n_train=60000, n_val=1500):
     """Loads the AG News dataset and pre-tokenizes it using the provided tokenizer. It returns tokenized train and validation datasets ready for PyTorch."""
     print("Pre-tokenizing dataset...")
     ds = load_dataset("ag_news")
@@ -1726,7 +1726,6 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 SEEDS = [42, 123, 999, 2024, 7]
-SEEDS = [2024, 7]
 
 def set_seed(seed):
     random.seed(seed)
@@ -1763,7 +1762,7 @@ def run_thesis_experiment():
             
         # Preparar ambiente para este run
         set_seed(seed)
-        run_name = f"run_{run_idx+1}_seed_{seed}_actual_experiment"
+        run_name = f"run_{run_idx+1}_seed_{seed}_200_steps"
             
         # Reinicializar tudo para evitar "leak" de memória entre runs
         gc.collect()

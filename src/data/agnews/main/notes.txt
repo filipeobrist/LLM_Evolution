@@ -1,4 +1,4 @@
-In this run, we used:
+In this run, we used: n_train=15000, n_val=1000
 # Configurations start here
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
@@ -14,3 +14,5 @@ FINE_TUNE = True
 
 BATCH_SIZE = 32
 STEPS_1 = 50
+
+- Also, each run took about ~8h and something in a single NVIDIA GeForce RTX 3080 gpu

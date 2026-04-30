@@ -771,7 +771,7 @@ def load_pretrained_jamba(model_name: str = "TechxGenus/Mini-Jamba"):
         attention_dropout=hf_model.config.attention_dropout,
         tie_lm_weights=hf_model.config.tie_word_embeddings
     )
-    # Create our custom model (with genotype=None → the original layer pattern)
+    # Create our custom model (with genotype=None -> the original layer pattern)
     jamba_lm = JambaLM(config, genotype=None)
 
     # Transfer all compatible parameters
@@ -789,7 +789,6 @@ def load_pretrained_jamba(model_name: str = "TechxGenus/Mini-Jamba"):
             mapped_state[our_name] = hf_state[hf_name]
         else:
             # Some parameters might be named slightly differently; we skip them.
-            # They will remain randomly initialised (mostly harmless).
             pass
     # Load the mapped weights (strict=False to allow missing/unexpected)
     missing, unexpected = jamba_lm.load_state_dict(mapped_state, strict=False)
@@ -813,9 +812,14 @@ def evaluate(model, loader, device, criterion):
         for batch in loader:
             input_ids = batch["input_ids"].to(device)
             labels = batch["label"].to(device)
-            start_lat = time.time()
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
             outputs = model(input_ids)
-            latencies.append((time.time() - start_lat) / input_ids.size(0))
+            end_event.record()
+            torch.cuda.synchronize()
+            elapsed_time_ms = start_event.elapsed_time(end_event)
+            latencies.append(elapsed_time_ms / input_ids.size(0))
             loss = criterion(outputs, labels)
             total_loss += loss.item()
             preds = torch.argmax(outputs, dim=1)
@@ -831,7 +835,7 @@ def evaluate(model, loader, device, criterion):
 # Main training
 # ------------------------------------------------------------
 def train_baseline():
-    # Hyperparameters – identical to your intensive training script
+    # Hyperparameters
     BATCH_SIZE = 32
     EPOCHS = 4
     LEARNING_RATE = 3e-5
