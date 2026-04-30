@@ -1,0 +1,16 @@
+In this run, we used:
+# Configurations start here
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+MAMBA, ATTN = 0, 1
+MIN_LAYERS, MAX_LAYERS = 4, 20 # Talvez meter menos que 3
+NUM_CLASSES = 4
+MUTATION_RATE = 0.10
+CROSSOVER_RATE = 0.8 
+POP_SIZE = 30
+GENERATIONS = 100
+ELITISM = 1
+LEARNING_RATE = 4e-4
+FINE_TUNE = True
+
+BATCH_SIZE = 32
+STEPS_1 = 50
