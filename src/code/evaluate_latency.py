@@ -5,19 +5,15 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 from datasets import load_dataset
 from typing import Union
-import random
-import copy
-from transformers import AutoTokenizer, get_linear_schedule_with_warmup
-import gc
-from torch.utils.data import DataLoader
-from sklearn.metrics import f1_score, accuracy_score, precision_recall_fscore_support
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 import time
+import numpy as np
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from torch.utils.data import DataLoader
+import argparse
 
 # ------------------------------------------------------------
-# 1.  Parallel scan
+# 1.  Parallel scan (igual ao teu train_model.py)
 # ------------------------------------------------------------
 def npo2(len):
     return 2 ** math.ceil(math.log2(len))
@@ -135,7 +131,7 @@ class PScan(torch.autograd.Function):
 pscan = PScan.apply
 
 # ------------------------------------------------------------
-# 2.  Mamba components
+# 2.  Mamba components (igual ao train_model.py)
 # ------------------------------------------------------------
 @dataclass
 class MambaConfig:
@@ -359,7 +355,7 @@ class RMSNorm(nn.Module):
             return output
 
 # ------------------------------------------------------------
-# 3.  Jamba model 
+# 3.  Jamba model (igual ao train_model.py)
 # ------------------------------------------------------------
 @dataclass
 class JambaLMConfig:
@@ -408,7 +404,6 @@ class JambaLMConfig:
                                         pscan=self.pscan, use_cuda=self.use_cuda)
 
 def from_pretrained(name: str):
-    """Load a model with pretrained weights, but only to extract the config we need."""
     try:
         from transformers import AutoModelForCausalLM
     except ImportError:
@@ -437,7 +432,7 @@ def from_pretrained(name: str):
         tie_lm_weights=model_hf.config.tie_word_embeddings
     )
     del model_hf
-    return config  # return config only – we’ll not use pretrained weights
+    return config
 
 class JambaLM(nn.Module):
     def __init__(self, config: JambaLMConfig, genotype: list = None):
@@ -446,7 +441,7 @@ class JambaLM(nn.Module):
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
         self.embedding = nn.Embedding(config.vocab_size, config.d_model, self.padding_idx)
-        self.jamba = Jamba(config, genotype)                    # ← genotype passed
+        self.jamba = Jamba(config, genotype)
         self.final_layernorm = RMSNorm(config.d_model, config.rms_norm_eps)
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         if config.tie_lm_weights:
@@ -458,45 +453,7 @@ class JambaLM(nn.Module):
         x, router_logits = self.jamba(x)
         x = self.final_layernorm(x)
         logits = self.lm_head(x)
-        if self.config.num_experts == 1:
-            return logits
-        else:
-            return logits, router_logits
-
-    def step(self, tokens, caches):
-        x = self.embedding(tokens)
-        x, caches = self.jamba.step(x, caches)
-        x = self.final_layernorm(x)
-        logits = self.lm_head(x)
-        return logits, caches
-
-    def generate(self, tokenizer, prompt: str, max_tokens: int = 50, batch_size: int = 1,
-                 sample: bool = True, top_k: int = 40, temperature: float = 1.0):
-        self.eval()
-        input_ids = tokenizer(prompt, return_tensors='pt').input_ids.to(next(self.parameters()).device)
-        input_ids = input_ids.repeat(batch_size, 1)
-        caches = [self.jamba.layers[i].get_empty_cache(batch_size, input_ids.device)
-                  for i in range(len(self.jamba.layers))]
-        for i in range(input_ids.size(1) + max_tokens - 1):
-            with torch.no_grad():
-                next_token_logits, caches = self.step(input_ids[:, [i]], caches)
-                next_token_logits = next_token_logits.squeeze(1)
-            if i+1 >= input_ids.size(1):
-                probs = F.softmax(next_token_logits / temperature, dim=-1)
-                if top_k is not None:
-                    values, _ = torch.topk(probs, k=top_k)
-                    probs[probs < values[:, -1, None]] = 0
-                    probs = probs / probs.sum(axis=1, keepdims=True)
-                if sample:
-                    next_token = torch.multinomial(probs, num_samples=1).squeeze(1)
-                else:
-                    next_token = torch.argmax(probs, dim=-1)
-                input_ids = torch.cat([input_ids, next_token.unsqueeze(1)], dim=1)
-                if next_token.item() == tokenizer.eos_token_id:
-                    break
-        outputs = [tokenizer.decode(output.tolist(), skip_special_tokens=True) for output in input_ids[:, 1:]]
-        self.train()
-        return outputs[0] if batch_size==1 else outputs
+        return logits  # we don't need router_logits for classification
 
     def _init_weights(self, module):
         std = self.config.initializer_range
@@ -515,7 +472,6 @@ class Jamba(nn.Module):
         self.config = config
         decoder_layers = []
         if genotype is None:
-            # original Mini‑Jamba pattern
             for i in range(config.n_layers):
                 is_attn = (i - config.attn_layer_offset) % config.attn_layer_period == 0
                 is_expert = (i - config.expert_layer_offset) % config.expert_layer_period == 0
@@ -525,7 +481,6 @@ class Jamba(nn.Module):
                 else:
                     decoder_layers.append(MambaLayer(config, num_experts=num_experts))
         else:
-            # genotype‑driven: 0 → Mamba, 1 → Attention
             for i, gene in enumerate(genotype):
                 is_expert = (i - config.expert_layer_offset) % config.expert_layer_period == 0
                 num_experts = config.num_experts if is_expert else 1
@@ -545,12 +500,6 @@ class Jamba(nn.Module):
             router_logits.append(layer_output[1])
         return x, router_logits
 
-    def step(self, x, caches):
-        for i, layer in enumerate(self.layers):
-            layer_output, caches[i] = layer(x, caches[i])
-            x = layer_output[0]
-        return x, caches
-
 class AttentionLayer(nn.Module):
     def __init__(self, config: JambaLMConfig, num_experts: int):
         super().__init__()
@@ -561,7 +510,6 @@ class AttentionLayer(nn.Module):
         self.pre_moe_layernorm = RMSNorm(config.d_model, eps=config.rms_norm_eps)
 
     def forward(self, x, cache=None):
-        # no active flag
         residual = x
         x = self.input_layernorm(x)
         x, cache = self.self_attn(x, cache)
@@ -625,7 +573,6 @@ class MambaLayer(nn.Module):
         self.pre_moe_layernorm = RMSNorm(config.d_model, eps=config.rms_norm_eps)
 
     def forward(self, x, cache=None):
-        # no active flag
         residual = x
         x = self.input_layernorm(x)
         if cache is None:
@@ -695,15 +642,6 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 
-def load_balancing_loss(router_logits, num_experts, num_experts_per_tok):
-    router_logits = torch.cat([r for r in router_logits if r.shape[1] > 1], dim=0)
-    routing_weights = F.softmax(router_logits, dim=-1)
-    _, selected_experts = torch.topk(routing_weights, num_experts_per_tok, dim=-1)
-    expert_mask = F.one_hot(selected_experts, num_experts)
-    tokens_per_expert = torch.mean(expert_mask.float(), dim=0)
-    router_prob_per_expert = torch.mean(routing_weights, dim=0)
-    return torch.sum(tokens_per_expert * router_prob_per_expert.unsqueeze(0)) * num_experts
-
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     batch, num_key_value_heads, slen, head_dim = hidden_states.shape
     if n_rep == 1:
@@ -712,7 +650,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 # ------------------------------------------------------------
-# 4.  Classifier wrapper
+# 4.  Classifier wrapper (igual)
 # ------------------------------------------------------------
 class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):
@@ -730,155 +668,174 @@ class JambaClassifier(nn.Module):
         return self.classifier(pooled)
 
 # ------------------------------------------------------------
-#
+# 5.  Função para carregar o baseline Mini‑Jamba com pesos pré‑treinados
 # ------------------------------------------------------------
-CHECKPOINT_NAME = "best_model_run_1_seed_42_200_steps.pt"
-OUTPUT_CSV = "trained_model_results_run_1_seed_42_200_steps.csv"
-MODEL_SAVE_PATH = "trained_model_run_1_seed_42_200_steps.pt"
-BATCH_SIZE = 32
-EPOCHS = 4
-LEARNING_RATE = 3e-5
+def load_pretrained_jamba(model_name: str = "TechxGenus/Mini-Jamba"):
+    """Carrega o modelo Mini‑Jamba do HuggingFace e transfere os pesos para a nossa implementação."""
+    print(f"Carregando modelo pré‑treinado: {model_name} ...")
+    hf_model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.float32,
+        use_mamba_kernels=False,
+        trust_remote_code=True
+    )
+    config = JambaLMConfig(
+        vocab_size=hf_model.config.vocab_size,
+        d_model=hf_model.config.hidden_size,
+        n_layers=hf_model.config.num_hidden_layers,
+        rms_norm_eps=hf_model.config.rms_norm_eps,
+        mlp_size=hf_model.config.intermediate_size,
+        inner_layernorms=hf_model.config.mamba_inner_layernorms,
+        expand_factor=hf_model.config.mamba_expand,
+        dt_rank=hf_model.config.mamba_dt_rank,
+        d_state=hf_model.config.mamba_d_state,
+        d_conv=hf_model.config.mamba_d_conv,
+        conv_bias=hf_model.config.mamba_conv_bias,
+        initializer_range=hf_model.config.initializer_range,
+        num_experts=hf_model.config.num_experts,
+        num_experts_per_tok=hf_model.config.num_experts_per_tok,
+        attn_layer_offset=hf_model.config.attn_layer_offset,
+        attn_layer_period=hf_model.config.attn_layer_period,
+        expert_layer_offset=hf_model.config.expert_layer_offset,
+        expert_layer_period=hf_model.config.expert_layer_period,
+        num_key_value_heads=hf_model.config.num_key_value_heads,
+        num_attention_heads=hf_model.config.num_attention_heads,
+        pad_token_id=hf_model.config.pad_token_id,
+        bias=hf_model.config.mamba_proj_bias,
+        attention_dropout=hf_model.config.attention_dropout,
+        tie_lm_weights=hf_model.config.tie_word_embeddings
+    )
+    # Criar o modelo com o padrão original de camadas
+    jamba_lm = JambaLM(config, genotype=None)
 
-def evaluate(model, loader, device, criterion):
+    # Mapear os pesos do HF para a nossa estrutura
+    hf_state = hf_model.state_dict()
+    our_state = jamba_lm.state_dict()
+    mapped_state = {}
+    for our_name, our_param in our_state.items():
+        hf_name = our_name.replace("jamba.", "model.")
+        hf_name = hf_name.replace("embedding.weight", "model.embed_tokens.weight")
+        if hf_name in hf_state:
+            mapped_state[our_name] = hf_state[hf_name]
+
+    missing, unexpected = jamba_lm.load_state_dict(mapped_state, strict=False)
+    if missing:
+        print(f"Aviso: {len(missing)} chaves em falta (ex: {missing[:3]})")
+    if unexpected:
+        print(f"Aviso: {len(unexpected)} chaves inesperadas (ignoradas)")
+    del hf_model
+    return jamba_lm
+
+# ------------------------------------------------------------
+# 6.  Função de avaliação (medição correta da latência)
+# ------------------------------------------------------------
+def evaluate_model(model, test_loader, device):
     model.eval()
     all_preds, all_labels = [], []
-    total_loss = 0
-    latencies = []   # já não vamos precisar desta lista para a média
+
+    # Sincroniza e começa a medir o tempo total
+    torch.cuda.synchronize()
+    t_inicio = time.time()
 
     with torch.no_grad():
-        # Medição do tempo total
-        torch.cuda.synchronize()
-        t_inicio = time.time()
-
-        for batch in loader:
+        for batch in test_loader:
             input_ids = batch["input_ids"].to(device)
             labels = batch["label"].to(device)
-
             outputs = model(input_ids)
-            loss = criterion(outputs, labels)
-            total_loss += loss.item()
             preds = torch.argmax(outputs, dim=1)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
 
-        torch.cuda.synchronize()
-        t_fim = time.time()
+    torch.cuda.synchronize()
+    t_fim = time.time()
 
-    # Tempo total em segundos
-    tempo_total_s = t_fim - t_inicio
-    n_amostras = len(all_labels)   # total de exemplos no dataset de teste
+    total_time_s = t_fim - t_inicio
+    n_amostras = len(all_labels)
+    latencia_media_ms = (total_time_s / n_amostras) * 1000.0
 
-    # Latência média por documento 
-    latencia_media_ms = (tempo_total_s / n_amostras) * 1000.0
-
-    # Calcula as métricas de performance
+    # Métricas de desempenho
     acc = accuracy_score(all_labels, all_preds)
     prec, rec, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted')
-    avg_loss = total_loss / len(loader)
 
     return {
-        "acc": acc, "prec": prec, "rec": rec, "f1": f1,
-        "loss": avg_loss,
-        "lat": latencia_media_ms
+        "acc": acc,
+        "prec": prec,
+        "rec": rec,
+        "f1": f1,
+        "latency_ms": latencia_media_ms,
+        "n_amostras": n_amostras,
+        "tempo_total_s": total_time_s
     }
 
-def train_model():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Iniciando Benchmark Final em: {device}")
-
-    # 1. Carregar Dataset
-    print("A carregar e tokenizar AG News...")
+# ------------------------------------------------------------
+# 7.  Carrega o dataset de teste
+# ------------------------------------------------------------
+def get_test_loader(tokenizer_name="TechxGenus/Mini-Jamba", batch_size=32, max_length=128):
     dataset = load_dataset("ag_news")
-    tokenizer = AutoTokenizer.from_pretrained("TechxGenus/Mini-Jamba")
-    def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=128)
-    tokenized_train = dataset["train"].map(tokenize_function, batched=True).with_format("torch")
-    tokenized_test = dataset["test"].map(tokenize_function, batched=True).with_format("torch")
-    train_loader = DataLoader(tokenized_train, batch_size=BATCH_SIZE, shuffle=True)
-    test_loader = DataLoader(tokenized_test, batch_size=BATCH_SIZE)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+    def tokenize_fn(examples):
+        return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=max_length)
+    tokenized_test = dataset["test"].map(tokenize_fn, batched=True).with_format("torch")
+    return DataLoader(tokenized_test, batch_size=batch_size)
 
-    # 2. Carregar checkpoint e reconstruir o modelo com o genótipo
-    print(f"A carregar checkpoint: {CHECKPOINT_NAME}")
-    checkpoint = torch.load(CHECKPOINT_NAME, map_location=device)
-    genotype = checkpoint['genotype']
-    print(f"\n GENÓTIPO DO MODELO: {genotype}")
-
-    config = from_pretrained("TechxGenus/Mini-Jamba")
-    base_lm = JambaLM(config, genotype).to(device)
-    model = JambaClassifier(base_lm, num_classes=4).to(device)
-
-    # Load with strict=False to handle frozen backbone from evolution
-    missing_keys, unexpected_keys = model.load_state_dict(checkpoint['state_dict'], strict=False)
-    if missing_keys:
-        print(f"Aviso: {len(missing_keys)} chaves em falta (ex: {missing_keys[:5]}). Serão treinadas de raiz.")
-    if unexpected_keys:
-        print(f"Aviso: {len(unexpected_keys)} chaves inesperadas (ignoradas).")
-
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Modelo reconstruído com {num_params:,} parâmetros.")
-
-    # 3. Treino 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
-    total_steps = len(train_loader) * EPOCHS
-    scheduler = get_linear_schedule_with_warmup(optimizer,
-                                                num_warmup_steps=int(0.1*total_steps),
-                                                num_training_steps=total_steps)
-    criterion = nn.CrossEntropyLoss()
-    best_f1 = -1.0
-    history = []
-
-    # Start a clock to measure total training time
-    start_time = time.time()
-
-    for epoch in range(EPOCHS):
-        model.train()
-        train_loss = 0
-        print(f"\n--- Época {epoch+1}/{EPOCHS} ---")
-        for batch in train_loader:
-            optimizer.zero_grad()
-            input_ids = batch["input_ids"].to(device)
-            labels = batch["label"].to(device)
-            outputs = model(input_ids)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            scheduler.step()
-            train_loss += loss.item()
-        avg_train_loss = train_loss / len(train_loader)
-
-        metrics = evaluate(model, test_loader, device, criterion)
-        current_f1 = metrics["f1"]
-
-        if current_f1 > best_f1:
-            best_f1 = current_f1
-            print(f"Novo recorde de F1: {best_f1:.4f}! A guardar pesos...")
-            torch.save(model.state_dict(), MODEL_SAVE_PATH)
-        else:
-            print(f"F1 ({current_f1:.4f}) não superou o melhor ({best_f1:.4f}).")
-
-        epoch_data = {
-            "epoch": epoch + 1,
-            "genotype": "".join(map(str, genotype)),
-            "train_loss": avg_train_loss,
-            "test_loss": metrics["loss"],
-            "accuracy": metrics["acc"],
-            "f1_weighted": metrics["f1"],
-            "precision": metrics["prec"],
-            "recall": metrics["rec"],
-            "latency_ms_per_doc": metrics["lat"], #
-            "params": num_params
-        }
-        history.append(epoch_data)
-        print(f"Train Loss: {avg_train_loss:.4f} | Test Loss: {metrics['loss']:.4f}")
-        print(f"F1: {metrics['f1']:.4f} | Acc: {metrics['acc']:.4f} | Lat: {epoch_data['latency_ms_per_doc']:.2f}ms")
-
-    df_results = pd.DataFrame(history)
-    df_results.to_csv(OUTPUT_CSV, index=False)
-    print(f"\nBenchmark concluído!")
-    print(f"Logs guardados em: {OUTPUT_CSV}")
-    print(f"Pesos finais guardados em: {MODEL_SAVE_PATH}")
-    print(f"Tempo total de treino: {time.time() - start_time:.2f} segundos")
-
+# ------------------------------------------------------------
+# 8.  Rotina principal
+# ------------------------------------------------------------
 if __name__ == "__main__":
-    train_model()
+    parser = argparse.ArgumentParser(description="Avalia latência e métricas de um modelo treinado.")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Caminho para o ficheiro .pt do modelo evoluído")
+    parser.add_argument("--baseline", action="store_true", help="Avaliar o baseline Mini‑Jamba (original)")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size para inferência")
+    args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Dispositivo: {device}")
+
+    # Carrega o dataset de teste
+    print("A carregar AG News (teste)...")
+    test_loader = get_test_loader(batch_size=args.batch_size)
+
+    # Constrói o modelo pretendido
+    if args.baseline:
+        print("Modo: Baseline Mini‑Jamba (16 camadas, padrão original)")
+        jamba_lm = load_pretrained_jamba("TechxGenus/Mini-Jamba").to(device)
+        model = JambaClassifier(jamba_lm, num_classes=4).to(device)
+        genotype = "Original Mini‑Jamba (16 layers)"
+    elif args.checkpoint:
+        print(f"A carregar checkpoint: {args.checkpoint}")
+        checkpoint = torch.load(args.checkpoint, map_location=device)
+        genotype = checkpoint.get('genotype', None)
+        if genotype is None:
+            raise ValueError("O checkpoint não contém um 'genotype'.")
+        genotype_str = "".join(map(str, genotype))
+        print(f"Genótipo: {genotype} ({len(genotype)} camadas)")
+        # Constrói o modelo com o genótipo
+        config = from_pretrained("TechxGenus/Mini-Jamba")
+        base_lm = JambaLM(config, genotype).to(device)
+        model = JambaClassifier(base_lm, num_classes=4).to(device)
+        # Carrega os pesos (strict=False porque podem faltar pesos congelados)
+        missing, unexpected = model.load_state_dict(checkpoint['state_dict'], strict=False)
+        if missing:
+            print(f"Aviso: {len(missing)} chaves em falta (ex: {missing[:3]})")
+        if unexpected:
+            print(f"Aviso: {len(unexpected)} chaves inesperadas")
+    else:
+        print("Erro: tens de especificar --checkpoint ou --baseline.")
+        exit()
+
+    # Conta parâmetros
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"Parâmetros totais do modelo: {num_params:,}")
+
+    # Avalia
+    print("\nA avaliar...")
+    metrics = evaluate_model(model, test_loader, device)
+
+    print("\n--- Resultados ---")
+    print(f"Amostras: {metrics['n_amostras']}")
+    print(f"Tempo total: {metrics['tempo_total_s']:.2f} s")
+    print(f"Latência média por documento: {metrics['latency_ms']:.2f} ms")
+    print(f"Acurácia: {metrics['acc']:.4f}")
+    print(f"Precisão (weighted): {metrics['prec']:.4f}")
+    print(f"Recall (weighted): {metrics['rec']:.4f}")
+    print(f"F1 (weighted): {metrics['f1']:.4f}")

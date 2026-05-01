@@ -807,29 +807,44 @@ def evaluate(model, loader, device, criterion):
     model.eval()
     all_preds, all_labels = [], []
     total_loss = 0
-    latencies = []
+    latencies = []   # já não vamos precisar desta lista para a média
+
     with torch.no_grad():
+        # Medição do tempo total
+        torch.cuda.synchronize()
+        t_inicio = time.time()
+
         for batch in loader:
             input_ids = batch["input_ids"].to(device)
             labels = batch["label"].to(device)
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
+
             outputs = model(input_ids)
-            end_event.record()
-            torch.cuda.synchronize()
-            elapsed_time_ms = start_event.elapsed_time(end_event)
-            latencies.append(elapsed_time_ms / input_ids.size(0))
             loss = criterion(outputs, labels)
             total_loss += loss.item()
             preds = torch.argmax(outputs, dim=1)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
+
+        torch.cuda.synchronize()
+        t_fim = time.time()
+
+    # Tempo total em segundos
+    tempo_total_s = t_fim - t_inicio
+    n_amostras = len(all_labels)   # total de exemplos no dataset de teste
+
+    # Latência média por documento (em milissegundos)
+    latencia_media_ms = (tempo_total_s / n_amostras) * 1000.0
+
+    # Calcula as métricas de performance
     acc = accuracy_score(all_labels, all_preds)
     prec, rec, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted')
     avg_loss = total_loss / len(loader)
-    avg_lat = np.mean(latencies)
-    return {"acc": acc, "prec": prec, "rec": rec, "f1": f1, "loss": avg_loss, "lat": avg_lat}
+
+    return {
+        "acc": acc, "prec": prec, "rec": rec, "f1": f1,
+        "loss": avg_loss,
+        "lat": latencia_media_ms
+    }
 
 # ------------------------------------------------------------
 # Main training
@@ -912,7 +927,7 @@ def train_baseline():
             "f1_weighted": metrics["f1"],
             "precision": metrics["prec"],
             "recall": metrics["rec"],
-            "latency_ms_per_doc": metrics["lat"] * 1000,
+            "latency_ms_per_doc": metrics["lat"],
             "params": num_params
         }
         history.append(epoch_data)
