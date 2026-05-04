@@ -1259,8 +1259,8 @@ ELITISM = 1
 LEARNING_RATE = 4e-4
 FINE_TUNE = True
 
-BATCH_SIZE = 32
-STEPS_1 = 200
+BATCH_SIZE = 16
+STEPS_1 = 400
 
 
 
@@ -1726,6 +1726,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 SEEDS = [42, 123, 999, 2024, 7]
+SEEDS = [2024,7]
 
 def set_seed(seed):
     random.seed(seed)
