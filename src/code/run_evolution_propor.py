@@ -1249,8 +1249,8 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
 # Configurations start here
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
-MIN_LAYERS, MAX_LAYERS = 4, 20 # Talvez meter menos que 3
-NUM_CLASSES = 4
+MIN_LAYERS, MAX_LAYERS = 4, 20
+NUM_CLASSES = 5
 MUTATION_RATE = 0.10
 CROSSOVER_RATE = 0.8 
 POP_SIZE = 30
@@ -1259,8 +1259,8 @@ ELITISM = 1
 LEARNING_RATE = 4e-4
 FINE_TUNE = True
 
-BATCH_SIZE = 16
-STEPS_1 = 400
+BATCH_SIZE = 8
+STEPS_1 = 200
 
 
 
@@ -1279,26 +1279,74 @@ class JambaClassifier(nn.Module):
         pooled = hidden_states.mean(dim=1) 
         return self.classifier(pooled)
 
-def load_agnews(tokenizer, n_train=60000, n_val=1500):
-    """Loads the AG News dataset and pre-tokenizes it using the provided tokenizer. It returns tokenized train and validation datasets ready for PyTorch."""
-    print("Pre-tokenizing dataset...")
-    ds = load_dataset("ag_news")
+def load_propor_dataset(tokenizer, max_length=512):
+    """Loads the PROPOR FOS Classification dataset and pre-tokenizes it."""
+    print("Loading and tokenizing PROPOR FOS dataset...")
+    ds = load_dataset("ivosimoes/PROPOR_FOS_Classification", split="train")
     
-    def tokenize_function(examples):
-        # Pre-Tokenization
-        return tokenizer(examples["text"], truncation=True, max_length=128, padding="max_length")
-
+    # Convert to pandas for easy manipulation
+    df = pd.DataFrame(ds)
+    
+    # Combine title, keywords, abstract into a single text input
+    df['text'] = df.apply(lambda row: f"Título: {row['title']}\nPalavras-chave: {row['keywords']}\nResumo: {row['abstract']}", axis=1)
+    
+    # Convert labels to integers (0-4)
+    # The dataset has string labels, so we need to encode them
+    labels = df['label'].unique().tolist()
+    label_to_id = {label: i for i, label in enumerate(labels)}
+    df['label_int'] = df['label'].map(label_to_id)
+    
+    print(f"Label mapping: {label_to_id}")
+    
+    
+    # Tokenize all texts
+    texts = df['text'].tolist()
+    labels_int = df['label_int'].tolist()
+    
+    # Shuffle
+    combined = list(zip(texts, labels_int))
+    random.shuffle(combined)
+    texts, labels_int = zip(*combined)
+    
     # Split
-    train = ds["train"].shuffle(seed=42).select(range(n_train))
-    val = ds["test"].shuffle(seed=42).select(range(n_val))
+    split_idx = int(0.9 * len(texts))
+    train_texts, val_texts = texts[:split_idx], texts[split_idx:]
+    train_labels, val_labels = labels_int[:split_idx], labels_int[split_idx:]
     
-    tokenized_train = train.map(tokenize_function, batched=True, remove_columns=["text"])
-    tokenized_val = val.map(tokenize_function, batched=True, remove_columns=["text"])
+    # Tokenize
+    def tokenize_function(texts, labels):
+        encodings = tokenizer(texts, truncation=True, max_length=max_length, padding="max_length")
+        return {
+            'input_ids': torch.tensor(encodings['input_ids']),
+            'attention_mask': torch.tensor(encodings['attention_mask']),
+            'label': torch.tensor(labels)
+        }
     
-    tokenized_train.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
-    tokenized_val.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
+    train_data = tokenize_function(train_texts, train_labels)
+    val_data = tokenize_function(val_texts, val_labels)
     
-    return tokenized_train, tokenized_val
+    # Create datasets
+    class SimpleDataset(torch.utils.data.Dataset):
+        def __init__(self, input_ids, attention_mask, labels):
+            self.input_ids = input_ids
+            self.attention_mask = attention_mask
+            self.labels = labels
+        
+        def __len__(self):
+            return len(self.input_ids)
+        
+        def __getitem__(self, idx):
+            return {
+                'input_ids': self.input_ids[idx],
+                'attention_mask': self.attention_mask[idx],
+                'label': self.labels[idx]
+            }
+    
+    train_ds = SimpleDataset(train_data['input_ids'], train_data['attention_mask'], train_data['label'])
+    val_ds = SimpleDataset(val_data['input_ids'], val_data['attention_mask'], val_data['label'])
+    
+    print(f"Train size: {len(train_ds)}, Val size: {len(val_ds)}")
+    return train_ds, val_ds
 
 
 def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0"):
@@ -1379,7 +1427,7 @@ def save_training_plot(losses, f1s, ind_id):
     ax2.tick_params(axis='y', labelcolor='tab:blue')
 
     plt.title(f'Training Progress - Indivíduo {ind_id}')
-    plt.savefig(f'../plots/training_plot_{ind_id}.png')
+    plt.savefig(f'../plots_propor/training_plot_{ind_id}.png')
     plt.close()
 
 
@@ -1616,7 +1664,7 @@ def plot_population_vs_best(data):
     plt.title('Convergência na Geração 0: Média vs Melhor')
     plt.legend()
     plt.grid(True, alpha=0.3)
-    plt.savefig('../plots/gen0_population_analysis.png')
+    plt.savefig('../plots_propor/gen0_population_analysis.png')
     plt.close()
 
 # EVOLUTION LOOP 
@@ -1747,7 +1795,7 @@ print(f"Running on: {device}")
 
 
 tokenizer = AutoTokenizer.from_pretrained("TechxGenus/Mini-Jamba")
-train_ds, val_ds = load_agnews(tokenizer)
+train_ds, val_ds = load_propor_dataset(tokenizer)
 
 # We load the base model once and move it to the device
 # It stays "frozen" as a template; deepcopy will be used for individuals
@@ -1762,7 +1810,7 @@ def run_thesis_experiment():
             
         # Preparar ambiente para este run
         set_seed(seed)
-        run_name = f"run_{run_idx+1}_seed_{seed}_200_steps"
+        run_name = f"run_{run_idx+1}_seed_{seed}_propor"
             
         # Reinicializar tudo para evitar "leak" de memória entre runs
         gc.collect()
