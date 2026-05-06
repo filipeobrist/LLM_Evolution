@@ -732,9 +732,9 @@ class JambaClassifier(nn.Module):
 # ------------------------------------------------------------
 # Demora mais ou menos ~5h30
 # ------------------------------------------------------------
-CHECKPOINT_NAME = "best_model_run_3_seed_999_200_steps.pt"
-OUTPUT_CSV = "trained_model_results_run_3_seed_999_200_steps.csv"
-MODEL_SAVE_PATH = "trained_model_run_3_seed_999_200_steps.pt"
+CHECKPOINT_NAME = "best_model_run_5_seed_7_200_steps.pt"
+OUTPUT_CSV = "trained_model_results_run_5_seed_7_200_steps.csv"
+MODEL_SAVE_PATH = "trained_model_run_5_seed_7_200_steps.pt"
 BATCH_SIZE = 32
 EPOCHS = 4
 LEARNING_RATE = 3e-5
