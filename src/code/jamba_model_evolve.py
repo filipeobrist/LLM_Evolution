@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 # Count the execution time
@@ -810,24 +811,21 @@ def from_pretrained(name: str):
     return model
 
 class JambaLM(nn.Module):
-    def __init__(self, config: JambaLMConfig):
+    def __init__(self, config: JambaLMConfig, genotype: list = None):
         super().__init__()
-
-        # Added
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         self.config = config
 
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
         self.embedding = nn.Embedding(config.vocab_size, config.d_model, self.padding_idx)
-        self.jamba = Jamba(config)
+        self.jamba = Jamba(config, genotype)   # ← pass genotype
         self.final_layernorm = RMSNorm(config.d_model, config.rms_norm_eps)
 
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         if self.config.tie_lm_weights:
-            self.lm_head.weight = self.embedding.weight 
+            self.lm_head.weight = self.embedding.weight
 
         self.apply(self._init_weights)
 
@@ -923,24 +921,32 @@ class JambaLM(nn.Module):
                 module.weight.data[module.padding_idx].zero_()
 
 class Jamba(nn.Module):
-    def __init__(self, config: JambaLMConfig):
+    def __init__(self, config: JambaLMConfig, genotype: list = None):
         super().__init__()
-
         self.config = config
 
-        # init each model layer, decide if it's mamba/attention and has experts or not
         decoder_layers = []
-        for i in range(config.n_layers):
-            is_attn = True if (i - self.config.attn_layer_offset) % self.config.attn_layer_period == 0 else False
-            is_expert = True if (i - self.config.expert_layer_offset) % self.config.expert_layer_period == 0 else False
-
-            num_experts = self.config.num_experts if is_expert else 1
-
-            if is_attn:
-                decoder_layers.append(AttentionLayer(config, num_experts=num_experts))
-            else:
-                decoder_layers.append(MambaLayer(config, num_experts=num_experts))
-
+        if genotype is None:
+            # Fallback to original Mini‑Jamba pattern (used for from_pretrained)
+            for i in range(config.n_layers):
+                is_attn = True if (i - self.config.attn_layer_offset) % self.config.attn_layer_period == 0 else False
+                is_expert = True if (i - self.config.expert_layer_offset) % self.config.expert_layer_period == 0 else False
+                num_experts = self.config.num_experts if is_expert else 1
+                if is_attn:
+                    decoder_layers.append(AttentionLayer(config, num_experts=num_experts))
+                else:
+                    decoder_layers.append(MambaLayer(config, num_experts=num_experts))
+        else:
+            # Build from genotype: 0 → MambaLayer, 1 → AttentionLayer
+            for i, gene in enumerate(genotype):
+                is_expert = True if (i - self.config.expert_layer_offset) % self.config.expert_layer_period == 0 else False
+                num_experts = self.config.num_experts if is_expert else 1
+                if gene == 0:
+                    decoder_layers.append(MambaLayer(config, num_experts=num_experts))
+                elif gene == 1:
+                    decoder_layers.append(AttentionLayer(config, num_experts=num_experts))
+                else:
+                    raise ValueError(f"Invalid gene value: {gene}")
         self.layers = nn.ModuleList(decoder_layers)
 
         # here you may want to init the weights in a particular manner if you don't use this jamba inside a JambaLM (see JambaLM)
@@ -983,14 +989,11 @@ class AttentionLayer(nn.Module):
         self.input_layernorm = RMSNorm(config.d_model, eps=config.rms_norm_eps)
         self.pre_moe_layernorm = RMSNorm(config.d_model, eps=config.rms_norm_eps)
 
-        ## ADDED
-        self.layer_type = "attention"
-        self.active = True   # ← THIS 
 
     def forward(self, x, cache = None):
-        if not self.active:
-            # Identity layer
-            return (x, None), cache
+        # if not self.active:
+        #     # Identity layer
+        #     return (x, None), cache
         # x: (B, L, D)
 
         # outputs: (B, L, D)
@@ -1084,13 +1087,10 @@ class MambaLayer(nn.Module):
         self.input_layernorm = RMSNorm(config.d_model, eps=config.rms_norm_eps)
         self.pre_moe_layernorm = RMSNorm(config.d_model, eps=config.rms_norm_eps)
 
-        ## ADDED
-        self.layer_type = "mamba"
-        self.active = True   # ← THIS
 
     def forward(self, x, cache = None):
-        if not self.active:
-            return (x, None), cache
+        # if not self.active:
+        #     return (x, None), cache
         # x: (B, L, D)
 
         # outputs: (B, L, D)
@@ -1246,32 +1246,6 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
-# Configurations start here
-# --- CONSTANTS & CONFIG ---
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-MAMBA, ATTN = 0, 1
-MIN_LAYERS, MAX_LAYERS = 4, 20
-NUM_CLASSES = 4
-MUTATION_RATE = 0.25
-POP_SIZE = 30
-GENERATIONS = 100
-ELITISM = 1
-LEARNING_RATE = 4e-4
-BATCH_SIZE = 32
-STEPS_1, STEPS_2 = 100, 200
-FINE_TUNE = True
-
-BATCH_SIZE = 32
-STEPS_1 = 150
-
-# Benchmark Mini-Jamba original 
-# BASELINE_LATENCY = 0.35 
-# BASELINE_PARAMS = 70_000_000
-
-BASELINE_LATENCY = 0.01
-BASELINE_PARAMS = 50_000_000
-
-
 class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):
         super().__init__()
@@ -1286,495 +1260,3 @@ class JambaClassifier(nn.Module):
         hidden_states = self.lm.final_layernorm(outputs[0])
         pooled = hidden_states.mean(dim=1) 
         return self.classifier(pooled)
-
-def load_agnews(tokenizer, n_train=25000, n_val=1000):
-    """Loads the AG News dataset and pre-tokenizes it using the provided tokenizer. It returns tokenized train and validation datasets ready for PyTorch."""
-    print("Pre-tokenizing dataset...")
-    ds = load_dataset("ag_news")
-    
-    def tokenize_function(examples):
-        # Pre-Tokenization
-        return tokenizer(examples["text"], truncation=True, max_length=128, padding="max_length")
-
-    # Split
-    train = ds["train"].shuffle(seed=42).select(range(n_train))
-    val = ds["test"].shuffle(seed=42).select(range(n_val))
-    
-    tokenized_train = train.map(tokenize_function, batched=True, remove_columns=["text"])
-    tokenized_val = val.map(tokenize_function, batched=True, remove_columns=["text"])
-    
-    tokenized_train.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
-    tokenized_val.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
-    
-    return tokenized_train, tokenized_val
-
-
-def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0"):
-    model.train()
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
-    loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
-    
-    best_f1 = 0
-    best_weights = copy.deepcopy(model.state_dict())
-    no_improve_count = 0
-    val_check_interval = 100 
-    
-    # Listas para guardar métricas apenas se gen0 for True para não gastar RAM à toa
-    train_losses = [] if gen0 else None
-    val_f1s = [] if gen0 else None
-    
-    start_time = time.time()
-    step_count = 0
-    
-    while step_count < steps:
-        for batch in loader:
-            if step_count >= steps: break
-            
-            input_ids, labels = batch["input_ids"].to(DEVICE), batch["label"].to(DEVICE)
-            optimizer.zero_grad()
-            logits = model(input_ids)
-            loss = F.cross_entropy(logits, labels)
-            loss.backward()
-            optimizer.step()
-            
-            # Só guarda a loss se estivermos na Geração 0
-            if gen0:
-                train_losses.append(loss.item())
-            
-            step_count += 1
-            
-            # --- Verificação de Validação & Early Stopping ---
-            if step_count % val_check_interval == 0 and val_ds is not None:
-                current_f1, _ = evaluate_model(model, val_ds)
-                model.train()
-                
-                if gen0:
-                    val_f1s.append((step_count, current_f1))
-                
-                if current_f1 > best_f1:
-                    best_f1 = current_f1
-                    best_weights = copy.deepcopy(model.state_dict())
-                    no_improve_count = 0
-                else:
-                    no_improve_count += 1
-                
-                # O Early Stopping corre sempre, mas o gráfico só é gerado na Gen 0
-                if no_improve_count >= patience:
-                    model.load_state_dict(best_weights)
-                    if gen0:
-                        save_training_plot(train_losses, val_f1s, ind_id)
-                    return time.time() - start_time, train_losses
-    
-    # Se chegarmos ao fim dos steps sem disparar o Early Stopping
-    if gen0:
-        save_training_plot(train_losses, val_f1s, ind_id)
-        
-    return time.time() - start_time, train_losses
-
-def save_training_plot(losses, f1s, ind_id):
-    """Gera um gráfico da evolução do treino."""
-    fig, ax1 = plt.subplots()
-
-    ax1.set_xlabel('Steps')
-    ax1.set_ylabel('Train Loss', color='tab:red')
-    ax1.plot(losses, color='tab:red', alpha=0.5, label='Loss')
-    ax1.tick_params(axis='y', labelcolor='tab:red')
-
-    ax2 = ax1.twinx()
-    ax2.set_ylabel('Val F1', color='tab:blue')
-    steps, f1_values = zip(*f1s) if f1s else ([], [])
-    ax2.plot(steps, f1_values, color='tab:blue', marker='o', label='F1')
-    ax2.tick_params(axis='y', labelcolor='tab:blue')
-
-    plt.title(f'Training Progress - Indivíduo {ind_id}')
-    plt.savefig(f'../plots/training_plot_{ind_id}.png')
-    plt.close()
-
-
-# Utils
-@torch.no_grad()
-def evaluate_model(model, val_ds):
-    """Returns F1 score and average latency per sample on the validation set."""
-    model.eval()
-    loader = DataLoader(val_ds, batch_size=BATCH_SIZE)
-    all_preds, all_labels, latencies = [], [], []
-    
-    for batch in loader:
-        input_ids = batch["input_ids"].to(DEVICE)
-        labels = batch["label"] # Mantém no CPU para facilitar
-        
-        torch.cuda.synchronize() 
-        start_lat = time.perf_counter()
-        logits = model(input_ids)
-        torch.cuda.synchronize() 
-        latencies.append(time.perf_counter() - start_lat)
-        
-        preds = torch.argmax(logits, dim=-1).cpu() 
-        
-   
-        all_preds.extend(preds.numpy().tolist())
-        all_labels.extend(labels.numpy().tolist())
-            
-    f1 = f1_score(all_labels, all_preds, average='weighted')
-    # Latência média por amostra (dividimos pelo batch size para ser real)
-    avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE
-    
-    return f1, avg_lat
-
-
-def get_trainable_state_dict(model):
-    """Returns a state_dict containing only parameters that require gradients."""
-    return {k: v.cpu().clone() for k, v in model.state_dict().items() if v.requires_grad}
-
-
-def setup_model_trainability(model, full_fine_tune=False):
-    """
-    If full_fine_tune is True: Unfreezes everything for max accuracy.
-    If full_fine_tune is False: Only unfreezes Norms, MoE, and Classifier.
-    """
-    if full_fine_tune:
-        # print("High-Performance Mode: Unfreezing all parameters...")
-        for p in model.parameters():
-            p.requires_grad = True
-    else:
-        # strategy for low VRAM
-        for name, p in model.named_parameters():
-            if (
-                "classifier" in name
-                or "layernorm" in name.lower()
-                or "moe" in name.lower()
-            ):
-                p.requires_grad = True
-            else:
-                p.requires_grad = False
-
-
-# --- GENETIC OPERATORS ---
-
-def generate_random_genotype():
-    """Generates a random genotype with a random length between MIN_LAYERS and MAX_LAYERS. Each gene is either 0 (Mamba) or 1 (Attention)."""
-    length = random.randint(MIN_LAYERS, MAX_LAYERS)
-    return [random.randint(0, 1) for _ in range(length)]
-
-def crossover(p1, p2):
-    # p1 e p2 são dicionários: {'genotype': [...], 'weights': state_dict}
-    child_genotype = []
-    child_weights = {}
-    
-    # 1. Herdar pesos globais (Embeddings, Normas, Classificador) 
-    # Escolhemos do pai com melhor fitness para estabilidade
-    best_parent = p1 if p1['fitness'] > p2['fitness'] else p2
-    for name, param in best_parent['weights'].items():
-        if "layers" not in name:
-            child_weights[name] = param
-
-    # 2. Crossover por Bloco
-    max_len = max(len(p1['genotype']), len(p2['genotype']))
-    for i in range(max_len):
-        # Escolha aleatória do progenitor para este bloco específico
-        if i < len(p1['genotype']) and i < len(p2['genotype']):
-            parent_source = p1 if random.random() < 0.5 else p2
-        elif i < len(p1['genotype']):
-            parent_source = p1
-        else:
-            parent_source = p2
-            
-        child_genotype.append(parent_source['genotype'][i])
-        
-        # Copiar todos os pesos pertencentes a este bloco i
-        block_prefix = f"lm.jamba.layers.{i}."
-        for name, param in parent_source['weights'].items():
-            if name.startswith(block_prefix):
-                child_weights[name] = param
-
-    return child_genotype, child_weights
-
-def mutate(genotype, mutation_rate=0.15):
-    """Multi-type mutation: Bit flip, Add layer, or Remove layer"""
-    new_genotype = list(genotype)
-    
-    # Bit Flips
-    for i in range(len(new_genotype)):
-        if random.random() < mutation_rate:
-            new_genotype[i] = 1 - new_genotype[i]
-            
-    # Structural Mutations (Add/Remove)
-    if random.random() < 0.1: # 10% chance to change depth
-        if random.random() > 0.5 and len(new_genotype) < MAX_LAYERS:
-            new_genotype.insert(random.randint(0, len(new_genotype)), random.randint(0, 1))
-        elif len(new_genotype) > MIN_LAYERS:
-            new_genotype.pop(random.randint(0, len(new_genotype) - 1))
-            
-    return new_genotype
-
-# --- SELECTION ---
-
-def tournament_selection(population, k=3):
-    # 1. Pick k random individuals from the whole population
-    selection_pool = random.sample(population, k)
-    
-    # 2. The winner is the one with the best fitness
-    winner = max(selection_pool, key=lambda x: x['fitness'])
-    
-    return winner
-
-# --- GENOTYPE ---
-
-def apply_genotype(model, genotype):
-    """Applies the genotype to the model by activating/deactivating layers and setting them to Mamba or Attention based on the gene value."""
-    for i, layer in enumerate(model.lm.jamba.layers):
-        if i < len(genotype):
-            layer.active = True
-            layer.use_mamba = (genotype[i] == MAMBA)
-            layer.use_attention = (genotype[i] == ATTN)
-        else:
-            layer.active = False
-
-def evaluate_individual(base_model, genotype, train_ds, val_ds, steps, inherited_weights=None, gen0=False, ind_id="0"):
-    """Evaluates an individual by applying its genotype to a fresh model, optionally loading inherited weights, 
-    training it, and then evaluating its F1 score and latency. It returns the trainable weights for inheritance
-    and a stats dictionary for fitness calculation."""
-
-    model = JambaClassifier(copy.deepcopy(base_model), NUM_CLASSES).to(DEVICE)
-    apply_genotype(model, genotype)
-    
-    if inherited_weights:
-        model.load_state_dict(inherited_weights, strict=False)
-    
-    setup_model_trainability(model, full_fine_tune=FINE_TUNE)
-
-    
-    train_time, losses = train_model(model, train_ds, steps, val_ds=val_ds, patience=3, gen0=gen0, ind_id=ind_id)
-    f1, latency = evaluate_model(model, val_ds)
-
-    print(f"Evaluated Genotype: {genotype} | F1: {f1:.4f} | Latency: {latency:.4f}s | Train Time: {train_time:.2f}s")
-
-    total_params = 0
-    for name, p in model.named_parameters():
-        # Só conta se não pertencer a uma camada inativa
-        parts = name.split('.')
-        if "layers" in parts:
-            layer_idx = int(parts[parts.index("layers") + 1])
-            if layer_idx < len(genotype):
-                total_params += p.numel()
-        else:
-            total_params += p.numel()
-    
-    stats = {
-        'f1': f1, 'latency': latency, 
-        'params': total_params,
-        'depth': len(genotype), 'train_time': train_time
-    }
-    
-    # Return only trainable weights for inheritance
-    return {k: v.cpu().clone() for k, v in model.state_dict().items() if v.requires_grad}, stats, losses
-
-def fitness(population_list):
-    if not population_list: return
-
-    for ind in population_list:
-        stats = ind['stats']
-        f1 = stats['f1']
-        
-        base_score = f1
-
-        # lat_ratio =  BASELINE_LATENCY / stats['latency']
-        # param_ratio = BASELINE_PARAMS / stats['params']  
-        
-        # penalty = 1.0 * lat_ratio + 0.5 * param_ratio # Ver o porque de eles usarem o exp 
-
-        ind['fitness'] = base_score # * penalty
-
-
-
-def smart_weight_inheritance(child_model, parent_weights, child_genotype, parent_genotype):
-    child_dict = child_model.state_dict()
-    new_weights = {}
-
-    for name, param in child_dict.items():
-        # Se o peso não for de uma camada evoluível (ex: embeddings, final_norm, classifier)
-        if "layers" not in name:
-            if name in parent_weights:
-                new_weights[name] = parent_weights[name]
-            continue
-        
-        # Extrair o índice da camada: "lm.jamba.layers.0.mamba.weights" -> 0
-        parts = name.split('.')
-        layer_idx = int(parts[parts.index("layers") + 1])
-        
-        # Só herdar se a camada existir no pai E for do mesmo tipo
-        if layer_idx < len(parent_genotype):
-            if child_genotype[layer_idx] == parent_genotype[layer_idx]:
-                if name in parent_weights:
-                    new_weights[name] = parent_weights[name]
-    
-    # Carregar apenas o que foi filtrado
-    child_model.load_state_dict(new_weights, strict=False)
-
-def plot_population_vs_best(data):
-    import numpy as np
-    plt.figure(figsize=(12, 6))
-    
-    # 1. Extrair todas as curvas de loss
-    all_curves = [d['losses'] for d in data]
-    # Garantir que todas têm o mesmo tamanho para a média (padding)
-    max_len = STEPS_1
-    padded = np.array([c + [c[-1]] * (max_len - len(c)) for c in all_curves])
-    
-    # 2. Calcular Média
-    mean_loss = np.mean(padded, axis=0)
-    
-    # 3. Identificar o Melhor Indivíduo (por F1)
-    best_idx = np.argmax([d['f1'] for d in data])
-    best_curve = padded[best_idx]
-    
-    # 4. Plot
-    steps = np.arange(max_len)
-    plt.plot(steps, mean_loss, label='Population Average', color='black', linewidth=2, linestyle='--')
-    plt.plot(steps, best_curve, label=f'Best model (F1: {data[best_idx]["f1"]:.4f})', color='blue', linewidth=2)
-    
-    # Estética
-    plt.fill_between(steps, np.min(padded, axis=0), np.max(padded, axis=0), color='gray', alpha=0.1, label='Range da População')
-    plt.xlabel('Training Steps')
-    plt.ylabel('Cross-Entropy Loss')
-    plt.title('Convergência na Geração 0: Média vs Melhor')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig('../plots/gen0_population_analysis.png')
-    plt.close()
-
-# --- EVOLUTION LOOP ---
-def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1):
-    history_logs = []
-    gen0_data = []
-    
-    gen_start_time = time.time()
-
-    print(f"--- Generation 0: Initializing {pop_size} individuals ---")
-    population = []
-    for i in range(pop_size): #*2 for phd
-        g = generate_random_genotype()
-        unique_id = f"gen0_step1_ind{i}"
-        # Aqui geramos gráficos apenas na Gen 0 para calibração
-        w, s, losses = evaluate_individual(base_model, g, train_ds, val_ds, STEPS_1, gen0=True, ind_id=unique_id)
-        population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
-
-    fitness(population)
-    population = sorted(population, key=lambda x: x['fitness'], reverse=True)
-    gen0_data = [{'losses': ind['losses'], 'f1': ind['stats']['f1']} for ind in population]
-
-    
-    # print("--- Generation 0: Refining survivors (Step 2) ---")
-    # for i, ind in enumerate(population):
-    #     unique_id = f"gen0_step2_ind{i}"
-    #     w, s, l_s2 = evaluate_individual(base_model, ind['genotype'], train_ds, val_ds, STEPS_2, 
-    #                                inherited_weights=ind['weights'], gen0=True, ind_id=unique_id)
-
-    #     full_losses = ind['temp_losses'] + l_s2
-    #     gen0_data.append({'losses': full_losses, 'f1': s['f1']})
-    #     ind['weights'], ind['stats'] = w, s
-    #     del ind['temp_losses']
-
-    gen_duration = (time.time() - gen_start_time) / 60
-    
-    # Log da Geração 0 (agora com treino completo!)
-    for i, ind in enumerate(sorted(population, key=lambda x: x['fitness'], reverse=True)):
-        history_logs.append({
-            'generation': 0, 'rank': i, 'fitness': ind['fitness'],
-            'f1': ind['stats']['f1'], 'latency': ind['stats']['latency'],
-            'params': ind['stats']['params'], 'depth': ind['stats']['depth'],
-            'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
-        })
-
-    pd.DataFrame(history_logs).to_csv("agnews_evolution_results_startover_without_phd_500.csv", index=False)
-    print(f"Gen 0 Best: F1 {population[0]['stats']['f1']:.4f}")
-
-    # --- GERAR O GRÁFICO FINAL DA POPULAÇÃO ---
-    plot_population_vs_best(gen0_data)
-    
-    # --- LIMPEZA DE RAM ---
-    del gen0_data
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # 3. LOOP DE EVOLUÇÃO
-    for gen in range(1, generations):
-        gen_start_time = time.time()
-        
-        # Elitism
-        new_candidates = population[:elitism]
-
-        while len(new_candidates) < pop_size: # * 2 para aplicar phd
-            p1, p2 = tournament_selection(population), tournament_selection(population)
-            temp_g, child_w = crossover(p1, p2)
-            child_g = mutate(temp_g, MUTATION_RATE)
-
-
-            w, s, _ = evaluate_individual(base_model, child_g, train_ds, val_ds, STEPS_1, inherited_weights=child_w)
-            new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
-
-
-        population = new_candidates
-        fitness(population)
-        population = sorted(population, key=lambda x: x['fitness'], reverse=True)
-
-        # Refinamento: Step 2 para os sobreviventes (completar a época)
-        # for ind in population:
-        #     # Só treinamos o Step 2 se o indivíduo ainda não tiver o treino completo 
-        #     # (evita retreinar elites desnecessariamente)
-        #     if ind['stats'].get('total_steps', 0) < (STEPS_1 + STEPS_2):
-        #         w, s, _ = evaluate_individual(base_model, ind['genotype'], train_ds, val_ds, STEPS_2, inherited_weights=ind['weights'])
-        #         ind['weights'], ind['stats'] = w, s
-
-        # Logs e Monitorização
-        gen_duration = (time.time() - gen_start_time) / 60
-
-        for i, ind in enumerate(population):
-            history_logs.append({
-                'generation': gen, 'rank': i, 'fitness': ind['fitness'],
-                'f1': ind['stats']['f1'], 'latency': ind['stats']['latency'],
-                'params': ind['stats']['params'], 'depth': ind['stats']['depth'],
-                'gen_time_min': gen_duration, 'genotype': str(ind['genotype'])
-            })
-
-        pd.DataFrame(history_logs).to_csv("agnews_evolution_results_startover_without_phd_500.csv", index=False)
-        print(f"Gen {gen} Best: F1 {population[0]['stats']['f1']:.4f}")
-        
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    return population[0]
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Running on: {device}")
-
-
-
-tokenizer = AutoTokenizer.from_pretrained("TechxGenus/Mini-Jamba")
-train_ds, val_ds = load_agnews(tokenizer)
-
-# We load the base model once and move it to the device
-# It stays "frozen" as a template; deepcopy will be used for individuals
-base_model = from_pretrained("TechxGenus/Mini-Jamba").to(device)
-
-# Run
-def run_thesis_experiment():
-    print("Starting Evolution with Direct Weight Inheritance...")
-
-    best_individual = evolve(
-        base_model=base_model,
-        train_ds=train_ds,
-        val_ds=val_ds,
-        pop_size=POP_SIZE,
-        generations=GENERATIONS,
-        elitism=ELITISM
-    )
-    
-    print(f"\nEvolution Complete!")
-    print(f"Best Genotype: {best_individual['genotype']}")
-    print(f"Stats: F1 {best_individual['stats']['f1']:.4f}, Latency {best_individual['stats']['latency']:.4f}s, Params {best_individual['stats']['params']}, Depth {best_individual['stats']['depth']}")
-    
-    return best_individual
-
-best_model_data = run_thesis_experiment()
