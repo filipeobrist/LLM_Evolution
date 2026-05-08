@@ -15,14 +15,14 @@ from jamba_model_train import *
 # ------------------------------------------------------------
 # Configuration
 # ------------------------------------------------------------
-CHECKPOINT_NAME = "best_model_run_1_seed_42_propor.pt"   # 
+CHECKPOINT_NAME = "best_model_run_1_seed_42_propor.pt"
 OUTPUT_CSV = "trained_propor_results_run_1_seed_42.csv"
 MODEL_SAVE_PATH = "trained_propor_best_run_1_seed_42.pt"
 
-BATCH_SIZE = 16          
+BATCH_SIZE = 16
 EPOCHS = 8
 LEARNING_RATE = 3e-5
-MAX_LENGTH = 512        
+MAX_LENGTH = 512
 SEED = 42
 
 random.seed(SEED)
@@ -31,38 +31,56 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 
 # ------------------------------------------------------------
-# PROPOR dataset loading (combine title, keywords, abstract)
+# PROPOR dataset loading (now using official train/test splits)
 # ------------------------------------------------------------
 def load_propor_dataset(tokenizer, max_length=512):
     print("Loading PROPOR FOS Classification dataset...")
-    ds = load_dataset("ivosimoes/PROPOR_FOS_Classification", split="train")
-    df = pd.DataFrame(ds)
+    # Load official splits
+    train_ds = load_dataset("ivosimoes/PROPOR_FOS_Classification", split="train")
+    test_ds = load_dataset("ivosimoes/PROPOR_FOS_Classification", split="test")
     
-    # Combine fields
-    df['text'] = df.apply(lambda row: f"Título: {row['title']}\nPalavras-chave: {row['keywords']}\nResumo: {row['abstract']}", axis=1)
+    df_train = pd.DataFrame(train_ds)
+    df_test = pd.DataFrame(test_ds)
     
-    # Encode labels
-    labels = sorted(df['label'].unique())
-    label_to_id = {l: i for i, l in enumerate(labels)}
+    # Combine fields for train
+    df_train['text'] = df_train.apply(
+        lambda row: f"Título: {row['title']}\nPalavras-chave: {row['keywords']}\nResumo: {row['abstract']}",
+        axis=1
+    )
+    # Combine fields for test
+    df_test['text'] = df_test.apply(
+        lambda row: f"Título: {row['title']}\nPalavras-chave: {row['keywords']}\nResumo: {row['abstract']}",
+        axis=1
+    )
+    
+    # Encode labels based on the train labels (to ensure same mapping)
+    train_labels = sorted(df_train['label'].unique())
+    label_to_id = {l: i for i, l in enumerate(train_labels)}
     print(f"Label mapping: {label_to_id}")
-    df['label_int'] = df['label'].map(label_to_id)
+    df_train['label_int'] = df_train['label'].map(label_to_id)
+    # For test, any unseen label (should not happen) gets -1, but we'll trust the dataset
+    df_test['label_int'] = df_test['label'].map(label_to_id)
+    # In case a test label is not present, we drop those rows (or handle as you prefer)
+    if df_test['label_int'].isna().any():
+        print("Warning: Some test labels were not present in the training set. Dropping them.")
+        df_test = df_test.dropna(subset=['label_int'])
+        df_test['label_int'] = df_test['label_int'].astype(int)
     
-    texts = df['text'].tolist()
-    labels_int = df['label_int'].tolist()
-    
-    # Shuffle and split: train 70% / val 15% / test 15%
-    combined = list(zip(texts, labels_int))
+    # Split train into train/val (85% train, 15% val)
+    texts_train = df_train['text'].tolist()
+    labels_train = df_train['label_int'].tolist()
+    combined = list(zip(texts_train, labels_train))
     random.shuffle(combined)
-    texts, labels_int = zip(*combined)
+    texts_train, labels_train = zip(*combined)
+    split_idx = int(0.85 * len(texts_train))
+    train_texts, val_texts = texts_train[:split_idx], texts_train[split_idx:]
+    train_labels, val_labels = labels_train[:split_idx], labels_train[split_idx:]
     
-    n = len(texts)
-    n_train = int(0.7 * n)
-    n_val = int(0.15 * n)
-    train_texts, train_labels = texts[:n_train], labels_int[:n_train]
-    val_texts, val_labels = texts[n_train:n_train+n_val], labels_int[n_train:n_train+n_val]
-    test_texts, test_labels = texts[n_train+n_val:], labels_int[n_train+n_val:]
+    # Test set
+    test_texts = df_test['text'].tolist()
+    test_labels = df_test['label_int'].tolist()
     
-    # Tokenize
+    # Tokenize function
     def tokenize(texts, labels):
         enc = tokenizer(texts, truncation=True, max_length=max_length, padding="max_length")
         return {
@@ -86,15 +104,15 @@ def load_propor_dataset(tokenizer, max_length=512):
                     'attention_mask': self.attention_mask[idx],
                     'label': self.labels[idx]}
     
-    train_ds = SimpleDataset(train_enc['input_ids'], train_enc['attention_mask'], train_enc['label'])
-    val_ds = SimpleDataset(val_enc['input_ids'], val_enc['attention_mask'], val_enc['label'])
-    test_ds = SimpleDataset(test_enc['input_ids'], test_enc['attention_mask'], test_enc['label'])
+    train_dataset = SimpleDataset(train_enc['input_ids'], train_enc['attention_mask'], train_enc['label'])
+    val_dataset = SimpleDataset(val_enc['input_ids'], val_enc['attention_mask'], val_enc['label'])
+    test_dataset = SimpleDataset(test_enc['input_ids'], test_enc['attention_mask'], test_enc['label'])
     
-    print(f"Train: {len(train_ds)}, Val: {len(val_ds)}, Test: {len(test_ds)}")
-    return train_ds, val_ds, test_ds
+    print(f"Train: {len(train_dataset)}, Val: {len(val_dataset)}, Test: {len(test_dataset)}")
+    return train_dataset, val_dataset, test_dataset
 
 # ------------------------------------------------------------
-# Evaluation function (using synchronised time measurement)
+# Evaluation function (unchanged)
 # ------------------------------------------------------------
 def evaluate(model, loader, device, criterion):
     model.eval()
@@ -130,7 +148,7 @@ def evaluate(model, loader, device, criterion):
             'loss': avg_loss, 'lat': latency_ms}
 
 # ------------------------------------------------------------
-# Main training routine
+# Main training routine (unchanged except using the corrected splits)
 # ------------------------------------------------------------
 def train_propor():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -192,7 +210,7 @@ def train_propor():
             train_loss += loss.item()
         avg_train_loss = train_loss / len(train_loader)
         
-        # Evaluate on test set (or validation set; here we use test for final report)
+        # Evaluate on test set (the dedicated test split)
         metrics = evaluate(model, test_loader, device, criterion)
         current_f1 = metrics['f1']
         
