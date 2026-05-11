@@ -27,7 +27,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
 MIN_LAYERS, MAX_LAYERS = 4, 20 # Talvez meter menos que 3
 NUM_CLASSES = 4
-MUTATION_RATE = 0.10
+MUTATION_RATE = 0.10 # 1/tamamnho do genotipo
 CROSSOVER_RATE = 0.8 
 POP_SIZE = 30
 GENERATIONS = 100
@@ -235,7 +235,7 @@ def mutate(genotype, mutation_rate=0.10):
             
     # 2. Mutação Estrutural (Muda a profundidade)
     # 15% de chance de alterar o número de camadas
-    if random.random() < 0.15: 
+    if random.random() < 0.15: # Tem que mudar para parametro  
         if random.random() > 0.5 and len(new_genotype) < MAX_LAYERS:
             # Insere em qualquer posição
             new_genotype.insert(random.randint(0, len(new_genotype)), random.randint(0, 1))
@@ -272,7 +272,7 @@ def evaluate_individual(config, genotype, train_ds, val_ds, steps,
                         gen0=False, ind_id="0"):
     """
     Build a JambaLM with the given genotype, optionally inherit weights for
-    layers that have the same type as the parent, then fine‑tune and evaluate.
+    layers that have the same type as the parent, then fine_tune and evaluate.
     """
     # Create model from genotype
     model = JambaLM(config, genotype).to(DEVICE)
@@ -324,7 +324,9 @@ def fitness(population_list):
 
 
 def weight_share(child_model, parent_weights, child_genotype, parent_genotype):
-    # Errado
+    # Errado, porque o modelo filho pode ter camadas a mais ou a menos, e o índice da camada no filho pode não
+    #  corresponder ao do pai. Precisamos de uma lógica que mapeie camadas do filho para camadas do pai 
+    # com base no tipo (Mamba vs Attention) e na posição relativa, não apenas no índice absoluto.
     child_dict = child_model.state_dict()
     new_weights = {}
 

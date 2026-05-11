@@ -32,7 +32,6 @@ def evaluate(model, loader, device, criterion):
     model.eval()
     all_preds, all_labels = [], []
     total_loss = 0
-    latencies = []   # já não vamos precisar desta lista para a média
 
     with torch.no_grad():
         # Medição do tempo total
