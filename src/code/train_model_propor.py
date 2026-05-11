@@ -15,15 +15,15 @@ from jamba_model_train import *
 # ------------------------------------------------------------
 # Configuration
 # ------------------------------------------------------------
-CHECKPOINT_NAME = "best_model_run_1_seed_42_propor.pt"
-OUTPUT_CSV = "trained_propor_results_run_1_seed_42.csv"
-MODEL_SAVE_PATH = "trained_propor_best_run_1_seed_42.pt"
+CHECKPOINT_NAME = "best_model_run_3_seed_999_propor.pt"
+OUTPUT_CSV = "trained_propor_results_run_3_seed_999.csv"
+MODEL_SAVE_PATH = "trained_propor_best_run_3_seed_999.pt"
 
 BATCH_SIZE = 16
 EPOCHS = 8
 LEARNING_RATE = 3e-5
 MAX_LENGTH = 512
-SEED = 42
+SEED = 999
 
 random.seed(SEED)
 np.random.seed(SEED)
@@ -141,7 +141,7 @@ def evaluate(model, loader, device, criterion):
     latency_ms = (total_time_s / n_samples) * 1000.0
 
     acc = accuracy_score(all_labels, all_preds)
-    prec, rec, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted')
+    prec, rec, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='macro')
     avg_loss = total_loss / len(loader)
     
     return {'acc': acc, 'prec': prec, 'rec': rec, 'f1': f1,
@@ -227,7 +227,7 @@ def train_propor():
             'train_loss': avg_train_loss,
             'test_loss': metrics['loss'],
             'accuracy': metrics['acc'],
-            'f1_weighted': metrics['f1'],
+            'f1_macro': metrics['f1'],
             'precision': metrics['prec'],
             'recall': metrics['rec'],
             'latency_ms_per_doc': metrics['lat'],
