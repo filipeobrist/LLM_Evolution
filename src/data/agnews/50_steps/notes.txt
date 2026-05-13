@@ -16,3 +16,5 @@ BATCH_SIZE = 32
 STEPS_1 = 50
 
 - Also, each run took about ~8h and something in a single NVIDIA GeForce RTX 3080 gpu
+
+This where also results before changing mutation, and min_layers in the first generation 

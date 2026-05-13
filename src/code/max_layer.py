@@ -17,9 +17,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ------------------------------------------------------------
 # 2.  Experiment settings – keep them identical to your evolution
 # ------------------------------------------------------------
-BATCH_SIZE = 16            # AG News batch size
+BATCH_SIZE = 32            # AG News batch size
 MAX_LENGTH = 128           # AG News token length
-MAX_LAYERS = 20            # maximum possible layers
+MAX_LAYERS = 16            # maximum possible layers
 NUM_CLASSES = 4            # AG News classes
 
 # ------------------------------------------------------------
@@ -62,8 +62,7 @@ config = JambaLMConfig(
 # ------------------------------------------------------------
 # 4.  Build the heaviest possible model (20 layers, random genotype)
 # ------------------------------------------------------------
-random.seed(42)
-genotype = [random.randint(0, 1) for _ in range(MAX_LAYERS)]
+genotype = [0 for _ in range(MAX_LAYERS)]
 print(f"Test genotype: {genotype}")
 
 base_lm = JambaLM(config, genotype).to(DEVICE)
