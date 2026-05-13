@@ -1,4 +1,5 @@
 torch
+matplotlib
 transformers
 datasets
 scikit-learn
