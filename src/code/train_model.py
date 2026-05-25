@@ -19,7 +19,7 @@ import time
 from code.jamba_model_train import *
 
 # ------------------------------------------------------------
-# Demora mais ou menos ~5h30
+# Demora mais ou menos ~5h30 with 4 epochs on a single gpu and batch size 32
 # ------------------------------------------------------------
 CHECKPOINT_NAME = "best_model_run_5_seed_7_200_steps.pt"
 OUTPUT_CSV = "trained_model_results_run_5_seed_7_200_steps.csv"

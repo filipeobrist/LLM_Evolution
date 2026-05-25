@@ -118,7 +118,7 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
                 else:
                     no_improve_count += 1
                 
-                # O Early Stopping corre sempre, mas o gráfico só é gerado na Gen 0
+                #
                 if no_improve_count >= patience:
                     model.load_state_dict(best_weights)
                     if gen0:
@@ -176,7 +176,7 @@ def evaluate_model(model, val_ds):
         all_labels.extend(labels.numpy().tolist())
             
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    # Latência média por amostra (dividimos pelo batch size para ser real)
+    # Latência média por amostra
     avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE
     
     return f1, avg_lat
@@ -221,7 +221,7 @@ def crossover(g1, g2):
     # Combina a primeira parte de um com a segunda do outro
     child_g = g1[:point] + g2[point:]
     
-    # Garante que o filho respeita os limites de profundidade da tese
+    # Garante que o filho respeita os limites de profundidade
     if len(child_g) > MAX_LAYERS:
         child_g = child_g[:MAX_LAYERS]
     elif len(child_g) < MIN_LAYERS:
@@ -456,8 +456,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             if random.random() < MUTATION_RATE_STRUCTURAL:
                 child_g = mutate_structural(child_g)
 
-            # AVALIAÇÃO DO ZERO
-            # Passamos inherited_weights=None para forçar o modelo a inicializar do zero
+            # Avaliação do filho
             w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None, dl_seed=gen_seed)
             
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})

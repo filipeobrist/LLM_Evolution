@@ -159,7 +159,7 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
                 else:
                     no_improve_count += 1
                 
-                # O Early Stopping corre sempre, mas o gráfico só é gerado na Gen 0
+                #
                 if no_improve_count >= patience:
                     model.load_state_dict(best_weights)
                     if gen0:
@@ -217,7 +217,7 @@ def evaluate_model(model, val_ds):
         all_labels.extend(labels.numpy().tolist())
             
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    # Latência média por amostra (dividimos pelo batch size para ser real)
+    # Latência média por amostra
     avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE
     
     return f1, avg_lat
@@ -263,7 +263,7 @@ def crossover(g1, g2):
     # Combina a primeira parte de um com a segunda do outro
     child_g = g1[:point] + g2[point:]
     
-    # Garante que o filho respeita os limites de profundidade da tese
+    # Garante que o filho respeita os limites de profundidade
     if len(child_g) > MAX_LAYERS:
         child_g = child_g[:MAX_LAYERS]
     elif len(child_g) < MIN_LAYERS:
@@ -277,13 +277,13 @@ def mutate(genotype, mutation_rate=0.10):
     """Mutação Bit-flip e Estrutural (agora segura pois treinamos do zero)"""
     new_genotype = list(genotype)
     
-    # 1. Bit Flips (Muda o tipo de camada: Jamba vs Mamba)
+    # 1. Bit Flips 
     for i in range(len(new_genotype)):
         if random.random() < mutation_rate:
             new_genotype[i] = 1 - new_genotype[i]
             
-    # 2. Mutação Estrutural (Muda a profundidade)
-    # 15% de chance de alterar o número de camadas
+    # 2. Mutação Estrutural
+    # 15% de chance de alterar o número de camadas (50/50 of inserting or deleting)
     if random.random() < 0.15: 
         if random.random() > 0.5 and len(new_genotype) < MAX_LAYERS:
             # Insere em qualquer posição
@@ -487,8 +487,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             # MUTAÇÃO 
             child_g = mutate(child_g, MUTATION_RATE)
 
-            # AVALIAÇÃO DO ZERO
-            # Passamos inherited_weights=None para forçar o modelo a inicializar do zero
+            # Avaliação do filho
             w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None)
             
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
