@@ -39,7 +39,7 @@ FINE_TUNE = True
 DATALOADER_BASE_SEED = 42
 
 BATCH_SIZE = 16
-STEPS_1 = 300
+STEPS_1 = 600
 
 
 def load_agnews(tokenizer, n_train=60000, n_val=1500):
@@ -539,7 +539,7 @@ def run_thesis_experiment():
             
         # Preparar ambiente para este run
         set_seed(seed)
-        run_name = f"run_{run_idx+1}_seed_{seed}_300_steps"
+        run_name = f"run_{run_idx+1}_seed_{seed}_600_steps"
             
         # Reinicializar tudo para evitar "leak" de memória entre runs
         gc.collect()
