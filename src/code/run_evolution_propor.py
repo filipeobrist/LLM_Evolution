@@ -550,7 +550,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 SEEDS = [42, 123, 999, 2024, 7]
-SEEDS = [123, 999, 2024, 7]
+# SEEDS = [123, 999, 2024, 7]
 
 def set_seed(seed):
     random.seed(seed)
