@@ -2,3 +2,7 @@ tese/
 exploracao/pratica/mamba/encoded_inputs_mamba.pt
 exploracao/pratica/mamba/enwik8.zip
 exploracao/pratica/transformer/lightning_logs
+fobrist/
+*.pt
+*.bin
+*.pth
