@@ -39,7 +39,7 @@ FINE_TUNE = True
 DATALOADER_BASE_SEED = 42
 
 BATCH_SIZE = 16
-STEPS_1 = 600
+STEPS_1 = 100
 
 
 def load_agnews(tokenizer, n_train=60000, n_val=1500):
@@ -503,6 +503,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 SEEDS = [42, 123, 999, 2024, 7]
+SEEDS = [2026, 22]
 
 def set_seed(seed):
     random.seed(seed)
@@ -539,7 +540,7 @@ def run_thesis_experiment():
             
         # Preparar ambiente para este run
         set_seed(seed)
-        run_name = f"run_{run_idx+1}_seed_{seed}_600_steps"
+        run_name = f"run_{run_idx+1}_seed_{seed}_{STEPS_1}_steps"
             
         # Reinicializar tudo para evitar "leak" de memória entre runs
         gc.collect()
