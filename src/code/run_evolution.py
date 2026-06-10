@@ -36,8 +36,10 @@ ELITISM = 1
 LEARNING_RATE = 4e-4
 FINE_TUNE = True
 
+DATALOADER_BASE_SEED = 42
+
 BATCH_SIZE = 16
-STEPS_1 = 300
+STEPS_1 = 100
 
 
 def load_agnews(tokenizer, n_train=60000, n_val=1500):
@@ -62,10 +64,15 @@ def load_agnews(tokenizer, n_train=60000, n_val=1500):
     return tokenized_train, tokenized_val
 
 
-def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0"):
+def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0", dl_seed=None):
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
-    loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+    if dl_seed is not None:
+        g = torch.Generator()
+        g.manual_seed(dl_seed)
+        loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, generator=g)
+    else:
+        loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     
     best_f1 = 0
     best_weights = copy.deepcopy(model.state_dict())
@@ -111,7 +118,7 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
                 else:
                     no_improve_count += 1
                 
-                # O Early Stopping corre sempre, mas o gráfico só é gerado na Gen 0
+                #
                 if no_improve_count >= patience:
                     model.load_state_dict(best_weights)
                     if gen0:
@@ -169,7 +176,7 @@ def evaluate_model(model, val_ds):
         all_labels.extend(labels.numpy().tolist())
             
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    # Latência média por amostra (dividimos pelo batch size para ser real)
+    # Latência média por amostra
     avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE
     
     return f1, avg_lat
@@ -214,7 +221,7 @@ def crossover(g1, g2):
     # Combina a primeira parte de um com a segunda do outro
     child_g = g1[:point] + g2[point:]
     
-    # Garante que o filho respeita os limites de profundidade da tese
+    # Garante que o filho respeita os limites de profundidade
     if len(child_g) > MAX_LAYERS:
         child_g = child_g[:MAX_LAYERS]
     elif len(child_g) < MIN_LAYERS:
@@ -273,7 +280,7 @@ def apply_genotype(model, genotype):
 
 def evaluate_individual(config, genotype, train_ds, val_ds, steps, 
                         inherited_weights=None, parent_genotype=None, 
-                        gen0=False, ind_id="0"):
+                        gen0=False, ind_id="0", dl_seed=None):
     """
     Build a JambaLM with the given genotype, optionally inherit weights for
     layers that have the same type as the parent, then fine_tune and evaluate.
@@ -290,7 +297,7 @@ def evaluate_individual(config, genotype, train_ds, val_ds, steps,
     
     train_time, losses = train_model(classifier, train_ds, steps, 
                                      val_ds=val_ds, patience=3, 
-                                     gen0=gen0, ind_id=ind_id)
+                                     gen0=gen0, ind_id=ind_id, dl_seed=dl_seed)
     f1, latency = evaluate_model(classifier, val_ds)
     
     total_params = sum(p.numel() for p in classifier.parameters() if p.requires_grad)
@@ -393,13 +400,14 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     best_overall_data = {}
     
     # Geração 0 
+    gen0_seed = DATALOADER_BASE_SEED + 0
     gen_start_time = time.time()
     print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
     for i in range(pop_size):
         g = generate_random_genotype(min_layers=10)
         # Treino do zero para a base inicial
-        w, s, losses = evaluate_individual(base_model.config, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i))
+        w, s, losses = evaluate_individual(base_model.config, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i), dl_seed=gen0_seed)
         population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
 
     fitness(population)
@@ -431,6 +439,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
         print(f"--- Generation {gen}: Evolving population ---")
         
+        gen_seed = DATALOADER_BASE_SEED + gen
         while len(new_candidates) < pop_size:
             # SELEÇÃO E CROSSOVER
             if random.random() < CROSSOVER_RATE:
@@ -447,9 +456,8 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             if random.random() < MUTATION_RATE_STRUCTURAL:
                 child_g = mutate_structural(child_g)
 
-            # AVALIAÇÃO DO ZERO
-            # Passamos inherited_weights=None para forçar o modelo a inicializar do zero
-            w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None)
+            # Avaliação do filho
+            w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None, dl_seed=gen_seed)
             
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
 
@@ -495,6 +503,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 SEEDS = [42, 123, 999, 2024, 7]
+SEEDS = [2026, 22]
 
 def set_seed(seed):
     random.seed(seed)
@@ -531,7 +540,7 @@ def run_thesis_experiment():
             
         # Preparar ambiente para este run
         set_seed(seed)
-        run_name = f"run_{run_idx+1}_seed_{seed}_200_steps"
+        run_name = f"run_{run_idx+1}_seed_{seed}_{STEPS_1}_steps"
             
         # Reinicializar tudo para evitar "leak" de memória entre runs
         gc.collect()

@@ -27,7 +27,8 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
 MIN_LAYERS, MAX_LAYERS = 4, 20
 NUM_CLASSES = 5
-MUTATION_RATE = 0.10
+MUTATION_RATE = 0.5
+MUTATION_RATE_STRUCTURAL = 0.25
 CROSSOVER_RATE = 0.8 
 POP_SIZE = 30
 GENERATIONS = 100
@@ -35,8 +36,10 @@ ELITISM = 1
 LEARNING_RATE = 4e-4
 FINE_TUNE = True
 
-BATCH_SIZE = 8
-STEPS_1 = 200
+BATCH_SIZE = 4
+STEPS_1 = 400
+
+DATALOADER_BASE_SEED = 42
 
 
 
@@ -110,10 +113,15 @@ def load_propor_dataset(tokenizer, max_length=512):
     return train_ds, val_ds
 
 
-def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0"):
+def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0", dl_seed=None):
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
-    loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+    if dl_seed is not None:
+        g = torch.Generator()
+        g.manual_seed(dl_seed)
+        loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, generator=g)
+    else:
+        loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     
     best_f1 = 0
     best_weights = copy.deepcopy(model.state_dict())
@@ -159,7 +167,7 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
                 else:
                     no_improve_count += 1
                 
-                # O Early Stopping corre sempre, mas o gráfico só é gerado na Gen 0
+                #
                 if no_improve_count >= patience:
                     model.load_state_dict(best_weights)
                     if gen0:
@@ -217,7 +225,7 @@ def evaluate_model(model, val_ds):
         all_labels.extend(labels.numpy().tolist())
             
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    # Latência média por amostra (dividimos pelo batch size para ser real)
+    # Latência média por amostra
     avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE
     
     return f1, avg_lat
@@ -252,9 +260,8 @@ def setup_model_trainability(model, full_fine_tune=False):
 
 # --- GENETIC OPERATORS ---
 
-def generate_random_genotype():
-    """Generates a random genotype with a random length between MIN_LAYERS and MAX_LAYERS. Each gene is either 0 (Mamba) or 1 (Attention)."""
-    length = random.randint(MIN_LAYERS, MAX_LAYERS)
+def generate_random_genotype(min_layers=MIN_LAYERS):
+    length = random.randint(min_layers, MAX_LAYERS)
     return [random.randint(0, 1) for _ in range(length)]
 
 def crossover(g1, g2):
@@ -263,7 +270,7 @@ def crossover(g1, g2):
     # Combina a primeira parte de um com a segunda do outro
     child_g = g1[:point] + g2[point:]
     
-    # Garante que o filho respeita os limites de profundidade da tese
+    # Garante que o filho respeita os limites de profundidade
     if len(child_g) > MAX_LAYERS:
         child_g = child_g[:MAX_LAYERS]
     elif len(child_g) < MIN_LAYERS:
@@ -273,25 +280,29 @@ def crossover(g1, g2):
             
     return child_g
 
-def mutate(genotype, mutation_rate=0.10):
-    """Mutação Bit-flip e Estrutural (agora segura pois treinamos do zero)"""
-    new_genotype = list(genotype)
-    
-    # 1. Bit Flips (Muda o tipo de camada: Jamba vs Mamba)
-    for i in range(len(new_genotype)):
-        if random.random() < mutation_rate:
-            new_genotype[i] = 1 - new_genotype[i]
-            
-    # 2. Mutação Estrutural (Muda a profundidade)
-    # 15% de chance de alterar o número de camadas
-    if random.random() < 0.15: 
-        if random.random() > 0.5 and len(new_genotype) < MAX_LAYERS:
-            # Insere em qualquer posição
-            new_genotype.insert(random.randint(0, len(new_genotype)), random.randint(0, 1))
-        elif len(new_genotype) > MIN_LAYERS:
-            new_genotype.pop(random.randint(0, len(new_genotype) - 1))
-            
-    return new_genotype
+def mutate_bitflip(genotype):
+    """Flip each gene with probability 1 / len(genotype)."""
+    new_gen = list(genotype)
+    rate = 1.0 / len(new_gen)
+    for i in range(len(new_gen)):
+        if random.random() < rate:
+            new_gen[i] = 1 - new_gen[i]
+    return new_gen
+
+def mutate_structural(genotype, insert_prob=0.5):
+    """
+    Either insert a random gene or delete a random gene. The choice between insert/delete
+    is balanced by insert_prob.
+    """
+    new_gen = list(genotype)
+    if len(new_gen) < MAX_LAYERS and (len(new_gen) <= MIN_LAYERS or random.random() < insert_prob):
+        # insert a random gene
+        new_gen.insert(random.randint(0, len(new_gen)), random.randint(0, 1))
+    elif len(new_gen) > MIN_LAYERS:
+        # delete a random gene
+        del new_gen[random.randint(0, len(new_gen)-1)]
+    # if both conditions fail (i.e. at min and trying to delete, or at max and trying to insert), do nothing
+    return new_gen
 
 # SELECTION
 
@@ -318,7 +329,7 @@ def apply_genotype(model, genotype):
 
 def evaluate_individual(config, genotype, train_ds, val_ds, steps, 
                         inherited_weights=None, parent_genotype=None, 
-                        gen0=False, ind_id="0"):
+                        gen0=False, ind_id="0", dl_seed=None):
     """
     Build a JambaLM with the given genotype, optionally inherit weights for
     layers that have the same type as the parent, then fine‑tune and evaluate.
@@ -335,7 +346,7 @@ def evaluate_individual(config, genotype, train_ds, val_ds, steps,
     
     train_time, losses = train_model(classifier, train_ds, steps, 
                                      val_ds=val_ds, patience=3, 
-                                     gen0=gen0, ind_id=ind_id)
+                                     gen0=gen0, ind_id=ind_id, dl_seed=dl_seed)
     f1, latency = evaluate_model(classifier, val_ds)
     
     total_params = sum(p.numel() for p in classifier.parameters() if p.requires_grad)
@@ -439,10 +450,11 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     gen_start_time = time.time()
     print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
+    gen0_seed = DATALOADER_BASE_SEED + 0
     for i in range(pop_size):
         g = generate_random_genotype()
         # Treino do zero para a base inicial
-        w, s, losses = evaluate_individual(base_model.config, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i))
+        w, s, losses = evaluate_individual(base_model.config, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i), dl_seed=gen0_seed)
         population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
 
     fitness(population)
@@ -474,6 +486,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
         print(f"--- Generation {gen}: Evolving population ---")
         
+        gen_seed = DATALOADER_BASE_SEED + gen
         while len(new_candidates) < pop_size:
             # SELEÇÃO E CROSSOVER
             if random.random() < CROSSOVER_RATE:
@@ -484,12 +497,14 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
                 parent = tournament_selection(population)
                 child_g = list(parent['genotype'])
             
-            # MUTAÇÃO 
-            child_g = mutate(child_g, MUTATION_RATE)
+            # Mutation
+            if random.random() < MUTATION_RATE:
+                child_g = mutate_bitflip(child_g)
+            if random.random() < MUTATION_RATE_STRUCTURAL:
+                child_g = mutate_structural(child_g)
 
-            # AVALIAÇÃO DO ZERO
-            # Passamos inherited_weights=None para forçar o modelo a inicializar do zero
-            w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None)
+            # Avaliação do filho
+            w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None, dl_seed=gen_seed)
             
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
 
@@ -535,6 +550,8 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 SEEDS = [42, 123, 999, 2024, 7]
+# SEEDS = [123, 999, 2024, 7]
+SEEDS = [2024, 7, 2026, 22]
 
 def set_seed(seed):
     random.seed(seed)
