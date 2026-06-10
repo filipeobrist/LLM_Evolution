@@ -1260,3 +1260,51 @@ class JambaClassifier(nn.Module):
         hidden_states = self.lm.final_layernorm(outputs[0])
         pooled = hidden_states.mean(dim=1) 
         return self.classifier(pooled)
+
+def get_pretrained_config(name: str):
+    """
+    Devolve apenas a configuração (JambaLMConfig) de um modelo HuggingFace,
+    sem carregar os pesos completos.
+    """
+    try:
+        from transformers import AutoModelForCausalLM
+    except ImportError:
+        raise ImportError("É preciso instalar a biblioteca transformers")
+
+    model_hf = AutoModelForCausalLM.from_pretrained(
+        name,
+        torch_dtype=torch.float32,
+        use_mamba_kernels=False,
+        device_map="cpu",
+        trust_remote_code=True
+    )
+
+    config = JambaLMConfig(
+        vocab_size=model_hf.config.vocab_size,
+        d_model=model_hf.config.hidden_size,
+        n_layers=model_hf.config.num_hidden_layers,
+        rms_norm_eps=model_hf.config.rms_norm_eps,
+        mlp_size=model_hf.config.intermediate_size,
+        inner_layernorms=model_hf.config.mamba_inner_layernorms,
+        expand_factor=model_hf.config.mamba_expand,
+        dt_rank=model_hf.config.mamba_dt_rank,
+        d_state=model_hf.config.mamba_d_state,
+        d_conv=model_hf.config.mamba_d_conv,
+        conv_bias=model_hf.config.mamba_conv_bias,
+        initializer_range=model_hf.config.initializer_range,
+        num_experts=model_hf.config.num_experts,
+        num_experts_per_tok=model_hf.config.num_experts_per_tok,
+        attn_layer_offset=model_hf.config.attn_layer_offset,
+        attn_layer_period=model_hf.config.attn_layer_period,
+        expert_layer_offset=model_hf.config.expert_layer_offset,
+        expert_layer_period=model_hf.config.expert_layer_period,
+        num_key_value_heads=model_hf.config.num_key_value_heads,
+        num_attention_heads=model_hf.config.num_attention_heads,
+        pad_token_id=model_hf.config.pad_token_id,
+        bias=model_hf.config.mamba_proj_bias,
+        attention_dropout=model_hf.config.attention_dropout,
+        tie_lm_weights=model_hf.config.tie_word_embeddings
+    )
+
+    del model_hf
+    return config
