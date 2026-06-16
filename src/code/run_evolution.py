@@ -39,7 +39,7 @@ FINE_TUNE = True
 DATALOADER_BASE_SEED = 42
 
 BATCH_SIZE = 16
-STEPS_1 = 400
+STEPS_1 = 300
 
 
 def load_agnews(tokenizer, n_train=60000, n_val=1500):
