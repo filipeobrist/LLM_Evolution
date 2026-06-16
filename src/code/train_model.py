@@ -21,9 +21,9 @@ from jamba_model_train import *
 # ------------------------------------------------------------
 # Demora mais ou menos ~2h30 with 4 epochs on a single gpu and batch size 32
 # ------------------------------------------------------------
-CHECKPOINT_NAME = "best_model_run_5_seed_7_300_steps.pt"
-OUTPUT_CSV = "trained_model_results_run_5_seed_7_300_steps.csv"
-MODEL_SAVE_PATH = "trained_model_run_5_seed_7_300_steps.pt"
+CHECKPOINT_NAME = "best_model_run_6_seed_2026_100_steps.pt"
+OUTPUT_CSV = "trained_model_results_run_6_seed_2026_100_steps.csv"
+MODEL_SAVE_PATH = "trained_model_run_6_seed_2026_100_steps.pt"
 BATCH_SIZE = 32
 EPOCHS = 4
 LEARNING_RATE = 3e-5
