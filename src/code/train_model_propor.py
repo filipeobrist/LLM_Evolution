@@ -15,15 +15,15 @@ from jamba_model_train import *
 # ------------------------------------------------------------
 # Configuration
 # ------------------------------------------------------------
-CHECKPOINT_NAME = "best_model_run_3_seed_999_propor.pt"
-OUTPUT_CSV = "trained_propor_results_run_3_seed_999.csv"
-MODEL_SAVE_PATH = "trained_propor_best_run_3_seed_999.pt"
+CHECKPOINT_NAME = "best_model_run_4_seed_2024_propor.pt"
+OUTPUT_CSV = "trained_propor_results_run_4_seed_2024.csv"
+MODEL_SAVE_PATH = "trained_propor_best_run_4_seed_2024.pt"
 
 BATCH_SIZE = 16
 EPOCHS = 8
 LEARNING_RATE = 3e-5
 MAX_LENGTH = 512
-SEED = 999
+SEED = 2024
 
 random.seed(SEED)
 np.random.seed(SEED)
