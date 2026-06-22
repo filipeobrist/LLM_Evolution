@@ -13,6 +13,7 @@ def measure_latency(model, input_ids, num_warmup=50, num_runs=500):
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
 
+    torch.cuda.reset_peak_memory_stats()
     timings = []
     for _ in range(num_runs):
         start_event.record()
@@ -21,83 +22,90 @@ def measure_latency(model, input_ids, num_warmup=50, num_runs=500):
         torch.cuda.synchronize()
         timings.append(start_event.elapsed_time(end_event))
 
+    peak_mem = torch.cuda.max_memory_allocated() / (1024**2)  # MiB
     timings = np.array(timings)
     mean = np.mean(timings)
     std = np.std(timings)
     median = np.median(timings)
     min_val = np.min(timings)
     max_val = np.max(timings)
-    return mean, std, median, min_val, max_val
+    return mean, std, median, min_val, max_val, peak_mem
 
 # ------------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--max_length", type=int, default=512)
-    parser.add_argument("--num_classes", type=int, default=5)
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="Optional path to a .pt checkpoint (if not given, model is randomly initialised).")
+    parser.add_argument("--genotype", type=str, default=None,
+                        help="Genotype as comma-separated list (e.g., '0,0,1,0,1'). Required if no checkpoint is given or if checkpoint lacks 'genotype'.")
+    parser.add_argument("--max_length", type=int, default=128)
+    parser.add_argument("--num_classes", type=int, default=4)
     parser.add_argument("--num_runs", type=int, default=500)
     parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--genotype", type=str, default=None,
-                        help="Genótipo manual (ex: '0,0,1,0,1'). Só necessário se o checkpoint não tiver 'genotype'.")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Dispositivo: {device}")
+    print(f"Device: {device}")
 
-    # Carregar checkpoint
-    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    # Determine genotype and optional state_dict
+    genotype = None
+    state_dict = None
 
-    # Determinar genótipo
-    if 'genotype' in checkpoint:
-        genotype = checkpoint['genotype']
-        print("Genótipo lido do checkpoint.")
-    elif args.genotype is not None:
-        genotype = [int(x) for x in args.genotype.split(',')]
-        print("Genótipo fornecido manualmente.")
+    if args.checkpoint is not None:
+        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+        if 'genotype' in checkpoint:
+            genotype = checkpoint['genotype']
+            print("Genotype read from checkpoint.")
+        elif args.genotype is not None:
+            genotype = [int(x) for x in args.genotype.split(',')]
+            print("Genotype provided manually (checkpoint lacked 'genotype').")
+        else:
+            print("ERROR: Checkpoint does not contain 'genotype' and --genotype was not given.")
+            exit(1)
+
+        if 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            state_dict = checkpoint   # assume the whole object is a state_dict
     else:
-        print("ERRO: O checkpoint não contém 'genotype' e não foi fornecido --genotype.")
-        exit(1)
+        # No checkpoint: must have genotype from command line
+        if args.genotype is None:
+            print("ERROR: Either --checkpoint or --genotype must be provided.")
+            exit(1)
+        genotype = [int(x) for x in args.genotype.split(',')]
+        print("No checkpoint given. Model will be randomly initialised.")
 
-    print(f"Genótipo: {genotype}")
+    print(f"Genotype: {genotype}")
 
-    # Usar a configuração exata do Mini‑Jamba (a mesma com que o modelo foi treinado)
+    # Build model with Mini-Jamba configuration
     config = get_pretrained_config("TechxGenus/Mini-Jamba")
     base_lm = JambaLM(config, genotype).to(device)
     model = JambaClassifier(base_lm, args.num_classes).to(device)
 
-    # Carregar pesos (estado pode estar na chave 'state_dict' ou diretamente no dicionário)
-    if 'state_dict' in checkpoint:
-        state = checkpoint['state_dict']
+    # Load weights if we have a state_dict
+    if state_dict is not None:
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        if missing:
+            print(f"Warning: {len(missing)} missing keys (e.g., {missing[:3]})")
+        if unexpected:
+            print(f"Warning: {len(unexpected)} unexpected keys")
     else:
-        state = checkpoint
-
-    missing, unexpected = model.load_state_dict(state, strict=False)
-    if missing:
-        print(f"Aviso: {len(missing)} chaves em falta (ex: {missing[:3]})")
-    if unexpected:
-        print(f"Aviso: {len(unexpected)} chaves inesperadas")
+        print("Using fresh random weights (no checkpoint loaded).")
 
     model.eval()
 
-    # Input aleatório
+    # Dummy input
     dummy_input = torch.randint(0, 20000, (args.batch_size, args.max_length), device=device)
 
-    # Medir
-    print(f"A medir latência ({args.num_runs} execuções)...")
-    avg_ms, std_ms, median_ms, min_ms, max_ms = measure_latency(model, dummy_input)
+    # Measure
+    print(f"Measuring latency ({args.num_runs} runs)...")
+    avg_ms, std_ms, median_ms, min_ms, max_ms, peak_mem = measure_latency(model, dummy_input)
 
-    print(f"\nResultado após {args.num_runs} execuções:")
-    print(f"  Média:        {avg_ms:.2f} ms")
-    print(f"  Mediana:      {median_ms:.2f} ms")
-    print(f"  Desvio padrão: {std_ms:.2f} ms")
-    print(f"  Mínimo:       {min_ms:.2f} ms")
-    print(f"  Máximo:       {max_ms:.2f} ms")
-    print(f"  Intervalo 95%: [{avg_ms - 1.96*std_ms:.2f}, {avg_ms + 1.96*std_ms:.2f}] ms")
-
-
-# A latência foi medida com o modelo em modo de avaliação, 
-# utilizando eventos CUDA para precisão. Foram realizadas 
-# 50 iterações de aquecimento seguidas de 500 medições. 
-# A média e o desvio padrão dessas medições são reportados. 
-# As medições foram efetuadas com a GPU dedicada exclusivamente 
-# ao processo, garantindo condições estáveis.
+    print(f"\nResults after {args.num_runs} runs:")
+    print(f"  Mean:          {avg_ms:.2f} ms")
+    print(f"  Median:        {median_ms:.2f} ms")
+    print(f"  Std deviation:  {std_ms:.2f} ms")
+    print(f"  Min:           {min_ms:.2f} ms")
+    print(f"  Max:           {max_ms:.2f} ms")
+    print(f"  95% interval:  [{avg_ms - 1.96*std_ms:.2f}, {avg_ms + 1.96*std_ms:.2f}] ms")
+    print(f"  Peak memory:   {peak_mem:.2f} MiB")
