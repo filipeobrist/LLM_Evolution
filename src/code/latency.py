@@ -38,8 +38,8 @@ if __name__ == "__main__":
                         help="Optional path to a .pt checkpoint (if not given, model is randomly initialised).")
     parser.add_argument("--genotype", type=str, default=None,
                         help="Genotype as comma-separated list (e.g., '0,0,1,0,1'). Required if no checkpoint is given or if checkpoint lacks 'genotype'.")
-    parser.add_argument("--max_length", type=int, default=128)
-    parser.add_argument("--num_classes", type=int, default=4)
+    parser.add_argument("--max_length", type=int, default=512)
+    parser.add_argument("--num_classes", type=int, default=5)
     parser.add_argument("--num_runs", type=int, default=500)
     parser.add_argument("--batch_size", type=int, default=1)
     args = parser.parse_args()

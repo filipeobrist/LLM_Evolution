@@ -147,7 +147,7 @@ def train_model(genotype_str=None, checkpoint_path=None):
         metrics = evaluate(model, test_loader, device, criterion)
         current_f1 = metrics["f1"]
 
-        # ... (same saving logic, but use a different save path for this run)
+        # saves
         OUTPUT_CSV = "original_jamba_results.csv"
         MODEL_SAVE_PATH = "original_jamba_best.pt"
 

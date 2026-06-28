@@ -289,7 +289,7 @@ class MambaConfig:
     mup_base_width: float = 128 # width=d_model
 
     pscan: bool = True # use parallel scan mode or sequential mode when training
-    use_cuda: bool = False # use official CUDA implementation when training (not compatible with (b)float16)
+    use_cuda: bool = True # use official CUDA implementation when training (not compatible with (b)float16)
 
     def __post_init__(self):
         self.d_inner = self.expand_factor * self.d_model # E*D = ED in comments

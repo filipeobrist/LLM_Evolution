@@ -405,7 +405,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
     for i in range(pop_size):
-        g = generate_random_genotype(min_layers=10)
+        g = generate_random_genotype(min_layers=10) # Doesnt change the outcome
         # Treino do zero para a base inicial
         w, s, losses = evaluate_individual(base_model.config, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i), dl_seed=gen0_seed)
         population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
