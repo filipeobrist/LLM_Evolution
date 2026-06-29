@@ -720,7 +720,7 @@ class JambaLMConfig:
     bias: bool = False
     conv_bias: bool = True
     inner_layernorms: bool = True
-    use_cuda: bool = False
+    use_cuda: bool = True
     pscan: bool = True # use parallel scan mode or sequential mode when training
 
     # attention related

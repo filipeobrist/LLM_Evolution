@@ -158,7 +158,7 @@ class MambaConfig:
     mup: bool = False
     mup_base_width: float = 128
     pscan: bool = True
-    use_cuda: bool = False
+    use_cuda: bool = True
 
     def __post_init__(self):
         self.d_inner = self.expand_factor * self.d_model
@@ -380,7 +380,7 @@ class JambaLMConfig:
     bias: bool = False
     conv_bias: bool = True
     inner_layernorms: bool = True
-    use_cuda: bool = False
+    use_cuda: bool = True
     pscan: bool = True
     num_attention_heads: int = 32
     num_key_value_heads: int = 8
