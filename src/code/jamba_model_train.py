@@ -3,21 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from datasets import load_dataset
 from typing import Union
-import random
-import copy
-from transformers import AutoTokenizer, get_linear_schedule_with_warmup
-import gc
-from torch.utils.data import DataLoader
-from sklearn.metrics import f1_score, accuracy_score, precision_recall_fscore_support
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import time
 
 # ------------------------------------------------------------
-# 1.  Parallel scan
+# Parallel scan
 # ------------------------------------------------------------
 def npo2(len):
     return 2 ** math.ceil(math.log2(len))
@@ -135,7 +124,7 @@ class PScan(torch.autograd.Function):
 pscan = PScan.apply
 
 # ------------------------------------------------------------
-# 2.  Mamba components
+# Mamba components
 # ------------------------------------------------------------
 @dataclass
 class MambaConfig:
@@ -359,7 +348,7 @@ class RMSNorm(nn.Module):
             return output
 
 # ------------------------------------------------------------
-# 3.  Jamba model 
+# Jamba model 
 # ------------------------------------------------------------
 @dataclass
 class JambaLMConfig:
@@ -712,7 +701,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 # ------------------------------------------------------------
-# 4.  Classifier wrapper
+# Classifier wrapper
 # ------------------------------------------------------------
 class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):

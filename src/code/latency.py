@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
     print(f"Genotype: {genotype}")
 
-    # Build model with Mini-Jamba configuration
+    # Mini-Jamba configuration
     config = get_pretrained_config("TechxGenus/Mini-Jamba")
     base_lm = JambaLM(config, genotype).to(device)
     model = JambaClassifier(base_lm, args.num_classes).to(device)
