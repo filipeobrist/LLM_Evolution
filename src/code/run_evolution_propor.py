@@ -1,10 +1,6 @@
-import math
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from dataclasses import dataclass
 from datasets import load_dataset
-from typing import Union
 import random
 import copy
 from transformers import AutoTokenizer
@@ -22,7 +18,7 @@ import time
 
 from jamba_model_evolve import *
 
-# Configurations start here
+# Configurations
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAMBA, ATTN = 0, 1
 MIN_LAYERS, MAX_LAYERS = 4, 20
@@ -48,14 +44,12 @@ def load_propor_dataset(tokenizer, max_length=512):
     print("Loading and tokenizing PROPOR FOS dataset...")
     ds = load_dataset("ivosimoes/PROPOR_FOS_Classification", split="train")
     
-    # Convert to pandas for easy manipulation
     df = pd.DataFrame(ds)
     
     # Combine title, keywords, abstract into a single text input
     df['text'] = df.apply(lambda row: f"Título: {row['title']}\nPalavras-chave: {row['keywords']}\nResumo: {row['abstract']}", axis=1)
     
-    # Convert labels to integers (0-4)
-    # The dataset has string labels, so we need to encode them
+    # Convert labels
     labels = df['label'].unique().tolist()
     label_to_id = {label: i for i, label in enumerate(labels)}
     df['label_int'] = df['label'].map(label_to_id)
@@ -114,6 +108,8 @@ def load_propor_dataset(tokenizer, max_length=512):
 
 
 def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind_id="0", dl_seed=None):
+    """Trains the model for a given number of steps, with optional early stopping based on validation F1 score."""
+
     model.train()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE)
     if dl_seed is not None:
@@ -128,7 +124,7 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
     no_improve_count = 0
     val_check_interval = 100 
     
-    # Listas para guardar métricas apenas se gen0 for True para não gastar RAM à toa
+    # List to store training losses and f1-score only for gen 0
     train_losses = [] if gen0 else None
     val_f1s = [] if gen0 else None
     
@@ -146,13 +142,12 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
             loss.backward()
             optimizer.step()
             
-            # Só guarda a loss se estivermos na Geração 0
             if gen0:
                 train_losses.append(loss.item())
             
             step_count += 1
             
-            # Verificação de Validação & Early Stopping
+            # Validation check and early stopping
             if step_count % val_check_interval == 0 and val_ds is not None:
                 current_f1, _ = evaluate_model(model, val_ds)
                 model.train()
@@ -173,15 +168,14 @@ def train_model(model, train_ds, steps, val_ds=None, patience=3, gen0=False, ind
                     if gen0:
                         save_training_plot(train_losses, val_f1s, ind_id)
                     return time.time() - start_time, train_losses
-    
-    # Se chegarmos ao fim dos steps sem disparar o Early Stopping
+                
     if gen0:
         save_training_plot(train_losses, val_f1s, ind_id)
         
     return time.time() - start_time, train_losses
 
 def save_training_plot(losses, f1s, ind_id):
-    """Gera um gráfico da evolução do treino."""
+    """Saves a plot of training loss and validation F1 score over steps for a given individual."""
     fig, ax1 = plt.subplots()
 
     ax1.set_xlabel('Steps')
@@ -195,7 +189,7 @@ def save_training_plot(losses, f1s, ind_id):
     ax2.plot(steps, f1_values, color='tab:blue', marker='o', label='F1')
     ax2.tick_params(axis='y', labelcolor='tab:blue')
 
-    plt.title(f'Training Progress - Indivíduo {ind_id}')
+    plt.title(f'Training Progress - Individual {ind_id}')
     plt.savefig(f'../plots_propor/training_plot_{ind_id}.png')
     plt.close()
 
@@ -210,7 +204,7 @@ def evaluate_model(model, val_ds):
     
     for batch in loader:
         input_ids = batch["input_ids"].to(DEVICE)
-        labels = batch["label"] # Mantém no CPU para facilitar
+        labels = batch["label"]
         
         torch.cuda.synchronize() 
         start_lat = time.perf_counter()
@@ -225,8 +219,8 @@ def evaluate_model(model, val_ds):
         all_labels.extend(labels.numpy().tolist())
             
     f1 = f1_score(all_labels, all_preds, average='weighted')
-    # Latência média por amostra
-    avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE
+    # Latency
+    avg_lat = (sum(latencies) / len(latencies)) / BATCH_SIZE 
     
     return f1, avg_lat
 
@@ -261,20 +255,21 @@ def setup_model_trainability(model, full_fine_tune=False):
 # --- GENETIC OPERATORS ---
 
 def generate_random_genotype(min_layers=MIN_LAYERS):
+    """Generates a random genotype with a length between min_layers and MAX_LAYERS."""
     length = random.randint(min_layers, MAX_LAYERS)
     return [random.randint(0, 1) for _ in range(length)]
 
 def crossover(g1, g2):
-    """Crossover de ponto único para genótipos de tamanhos variáveis"""
+    """Performs single-point crossover between two genotypes."""
     point = random.randint(1, min(len(g1), len(g2)) - 1)
-    # Combina a primeira parte de um com a segunda do outro
+    # Combine the two genotypes at the crossover point
     child_g = g1[:point] + g2[point:]
     
-    # Garante que o filho respeita os limites de profundidade
+    # Constraints garantee
     if len(child_g) > MAX_LAYERS:
         child_g = child_g[:MAX_LAYERS]
     elif len(child_g) < MIN_LAYERS:
-        # Se for muito pequeno, adiciona camadas aleatórias até ao mínimo
+        # If to small, fill
         while len(child_g) < MIN_LAYERS:
             child_g.append(random.randint(0, 1))
             
@@ -296,27 +291,28 @@ def mutate_structural(genotype, insert_prob=0.5):
     """
     new_gen = list(genotype)
     if len(new_gen) < MAX_LAYERS and (len(new_gen) <= MIN_LAYERS or random.random() < insert_prob):
-        # insert a random gene
+        # insert
         new_gen.insert(random.randint(0, len(new_gen)), random.randint(0, 1))
     elif len(new_gen) > MIN_LAYERS:
-        # delete a random gene
+        # delete
         del new_gen[random.randint(0, len(new_gen)-1)]
     # if both conditions fail (i.e. at min and trying to delete, or at max and trying to insert), do nothing
     return new_gen
 
-# SELECTION
 
+# SELECTION
 def tournament_selection(population, k=3):
-    # 1. Pick k random individuals from the whole population
+    """Selects the best individual from a random sample of k individuals from the population."""
+
+    # Pick k individuals
     selection_pool = random.sample(population, k)
     
-    # 2. The winner is the one with the best fitness
+    # winner
     winner = max(selection_pool, key=lambda x: x['fitness'])
     
     return winner
 
 # GENOTYPE 
-
 def apply_genotype(model, genotype):
     """Applies the genotype to the model by activating/deactivating layers and setting them to Mamba or Attention based on the gene value."""
     for i, layer in enumerate(model.lm.jamba.layers):
@@ -384,22 +380,22 @@ def fitness(population_list):
 
 
 def weight_share(child_model, parent_weights, child_genotype, parent_genotype):
-    # Errado
+    # NOT USED AND NEEDS UPDATE
     child_dict = child_model.state_dict()
     new_weights = {}
 
     for name, param in child_dict.items():
-        # Se o peso não for de uma camada evoluível
+ 
         if "layers" not in name:
             if name in parent_weights:
                 new_weights[name] = parent_weights[name]
             continue
         
-        # Extrair o índice da camada
+
         parts = name.split('.')
         layer_idx = int(parts[parts.index("layers") + 1])
         
-        # Só herdar se a camada existir no pai E for do mesmo tipo
+
         if layer_idx < len(parent_genotype):
             if child_genotype[layer_idx] == parent_genotype[layer_idx]:
                 if name in parent_weights:
@@ -409,18 +405,20 @@ def weight_share(child_model, parent_weights, child_genotype, parent_genotype):
     child_model.load_state_dict(new_weights, strict=False)
 
 def plot_population_vs_best(data):
+    """ Plots the average loss of the population against the best individual in generation 0.
+    """
     plt.figure(figsize=(12, 6))
     
-    # Extrair todas as curvas de loss
+    # loss curves
     all_curves = [d['losses'] for d in data]
 
     max_len = STEPS_1
     padded = np.array([c + [c[-1]] * (max_len - len(c)) for c in all_curves])
     
-    # Calcular Média
+
     mean_loss = np.mean(padded, axis=0)
     
-    # Identificar o Melhor Indivíduo (por F1)
+
     best_idx = np.argmax([d['f1'] for d in data])
     best_curve = padded[best_idx]
     
@@ -433,7 +431,7 @@ def plot_population_vs_best(data):
     plt.fill_between(steps, np.min(padded, axis=0), np.max(padded, axis=0), color='gray', alpha=0.1, label='Range da População')
     plt.xlabel('Training Steps')
     plt.ylabel('Cross-Entropy Loss')
-    plt.title('Convergência na Geração 0: Média vs Melhor')
+    plt.title('Convergence Analysis - Generation 0')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.savefig('../plots_propor/gen0_population_analysis.png')
@@ -441,19 +439,20 @@ def plot_population_vs_best(data):
 
 # EVOLUTION LOOP 
 def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1, run_name="evolution_run"):
+    """Main evolution loop for the genetic algorithm."""
     history_logs = []
     gen0_data = []
     best_overall_f1 = -1.0
     best_overall_data = {}
     
-    # Geração 0 
+    # Generation 0
     gen_start_time = time.time()
     print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
     gen0_seed = DATALOADER_BASE_SEED + 0
     for i in range(pop_size):
         g = generate_random_genotype()
-        # Treino do zero para a base inicial
+        # Train and evaluate individual
         w, s, losses = evaluate_individual(base_model.config, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i), dl_seed=gen0_seed)
         population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
 
@@ -479,7 +478,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     plot_population_vs_best(gen0_data)
     
 
-    # LOOP DE EVOLUÇÃO
+    # Evolution Loop
     for gen in range(1, generations):
         gen_start_time = time.time()
         new_candidates = population[:elitism]
@@ -488,12 +487,12 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
         
         gen_seed = DATALOADER_BASE_SEED + gen
         while len(new_candidates) < pop_size:
-            # SELEÇÃO E CROSSOVER
+            # SELECTION AND CROSSOVER
             if random.random() < CROSSOVER_RATE:
                 p1, p2 = tournament_selection(population), tournament_selection(population)
                 child_g = crossover(p1['genotype'], p2['genotype'])
             else:
-                # Se não há crossover, clonamos um progenitor
+                # No crossover, just select one parent
                 parent = tournament_selection(population)
                 child_g = list(parent['genotype'])
             
@@ -503,7 +502,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
             if random.random() < MUTATION_RATE_STRUCTURAL:
                 child_g = mutate_structural(child_g)
 
-            # Avaliação do filho
+            # Evaluate child
             w, s, _ = evaluate_individual(base_model.config, child_g, train_ds, val_ds, STEPS_1, inherited_weights=None, dl_seed=gen_seed)
             
             new_candidates.append({'genotype': child_g, 'weights': w, 'stats': s})
@@ -527,7 +526,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
                 'depth': current_gen_best['stats']['depth'],
                 'generation': gen
             }
-            print(f"Novo Recorde no Run! Gen {gen}: F1 {best_overall_f1:.4f}")
+            print(f"New run record! Gen {gen}: F1 {best_overall_f1:.4f}")
 
         # Logs e Monitorização
         gen_duration = (time.time() - gen_start_time) / 60
@@ -558,7 +557,7 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    # Garante que as operações no GPU sejam determinísticas
+
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
@@ -576,7 +575,6 @@ tokenizer = AutoTokenizer.from_pretrained("TechxGenus/Mini-Jamba")
 train_ds, val_ds = load_propor_dataset(tokenizer)
 
 # We load the base model once and move it to the device
-# It stays "frozen" as a template; deepcopy will be used for individuals
 base_model = from_pretrained("TechxGenus/Mini-Jamba").to(device)
 
 # Run
@@ -586,11 +584,11 @@ def run_thesis_experiment():
         print(f"Iniciating RUN {run_idx + 1}/5 (SEED: {seed})")
         print(f"{'='*30}")
             
-        # Preparar ambiente para este run
+        # seed set
         set_seed(seed)
         run_name = f"run_{run_idx+1}_seed_{seed}_propor"
             
-        # Reinicializar tudo para evitar "leak" de memória entre runs
+        # just to be sure, we clean up before each run
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -613,8 +611,8 @@ def run_thesis_experiment():
             'generation': best_of_run['generation']
         }, checkpoint_path)
         
-        print(f"Run {run_idx+1} concluído. Melhor F1: {best_of_run['f1']:.4f} (Gen {best_of_run['generation']})")
-        print(f"Modelo guardado em: {checkpoint_path}")
+        print(f"Run {run_idx+1} completed. Best F1: {best_of_run['f1']:.4f} (Gen {best_of_run['generation']})")
+        print(f"Model saved to: {checkpoint_path}")
 
     
 if __name__ == "__main__":
