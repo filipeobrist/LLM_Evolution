@@ -5,18 +5,14 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 from datasets import load_dataset
 from typing import Union
-import copy
 from transformers import AutoTokenizer, AutoModelForCausalLM, get_linear_schedule_with_warmup
 import gc
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import pandas as pd
-import numpy as np
 import time
 
-# ------------------------------------------------------------
-# 1.  All model components (Mamba, Jamba, etc.)
-# ------------------------------------------------------------
+# Model Components
 
 def npo2(len):
     return 2 ** math.ceil(math.log2(len))
@@ -133,9 +129,8 @@ class PScan(torch.autograd.Function):
 
 pscan = PScan.apply
 
-# ------------------------------------------------------------
+
 # Mamba components
-# ------------------------------------------------------------
 @dataclass
 class MambaConfig:
     d_model: int
@@ -157,7 +152,7 @@ class MambaConfig:
     mup: bool = False
     mup_base_width: float = 128
     pscan: bool = True
-    use_cuda: bool = False
+    use_cuda: bool = True
 
     def __post_init__(self):
         self.d_inner = self.expand_factor * self.d_model
@@ -357,9 +352,8 @@ class RMSNorm(nn.Module):
         else:
             return output
 
-# ------------------------------------------------------------
+
 # Jamba model
-# ------------------------------------------------------------
 @dataclass
 class JambaLMConfig:
     d_model: int
@@ -379,7 +373,7 @@ class JambaLMConfig:
     bias: bool = False
     conv_bias: bool = True
     inner_layernorms: bool = True
-    use_cuda: bool = False
+    use_cuda: bool = True
     pscan: bool = True
     num_attention_heads: int = 32
     num_key_value_heads: int = 8
@@ -711,9 +705,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 
-# ------------------------------------------------------------
 # Classifier wrapper
-# ------------------------------------------------------------
 class JambaClassifier(nn.Module):
     def __init__(self, base_lm, num_classes):
         super().__init__()
@@ -729,9 +721,8 @@ class JambaClassifier(nn.Module):
         pooled = hidden_states.mean(dim=1)
         return self.classifier(pooled)
 
-# ------------------------------------------------------------
+
 # Function to load Mini‑Jamba with pretrained weights
-# ------------------------------------------------------------
 def load_pretrained_jamba(model_name: str = "TechxGenus/Mini-Jamba"):
     """
     Load the HuggingFace Mini‑Jamba model and transfer its weights into our
@@ -775,7 +766,6 @@ def load_pretrained_jamba(model_name: str = "TechxGenus/Mini-Jamba"):
     jamba_lm = JambaLM(config, genotype=None)
 
     # Transfer all compatible parameters
-    # The HF model uses "model.layers..." while we use "jamba.layers..."
     hf_state = hf_model.state_dict()
     our_state = jamba_lm.state_dict()
     mapped_state = {}
@@ -800,14 +790,11 @@ def load_pretrained_jamba(model_name: str = "TechxGenus/Mini-Jamba"):
     gc.collect()
     return jamba_lm
 
-# ------------------------------------------------------------
-#
-# ------------------------------------------------------------
+# Evaluation function
 def evaluate(model, loader, device, criterion):
     model.eval()
     all_preds, all_labels = [], []
     total_loss = 0
-    latencies = []   # já não vamos precisar desta lista para a média
 
     with torch.no_grad():
         # Medição do tempo total
@@ -828,14 +815,13 @@ def evaluate(model, loader, device, criterion):
         torch.cuda.synchronize()
         t_fim = time.time()
 
-    # Tempo total em segundos
-    tempo_total_s = t_fim - t_inicio
-    n_amostras = len(all_labels)   # total de exemplos no dataset de teste
 
-    # Latência média por documento (em milissegundos)
+    tempo_total_s = t_fim - t_inicio
+    n_amostras = len(all_labels)
+
+    # Latency
     latencia_media_ms = (tempo_total_s / n_amostras) * 1000.0
 
-    # Calcula as métricas de performance
     acc = accuracy_score(all_labels, all_preds)
     prec, rec, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted')
     avg_loss = total_loss / len(loader)
@@ -846,9 +832,7 @@ def evaluate(model, loader, device, criterion):
         "lat": latencia_media_ms
     }
 
-# ------------------------------------------------------------
-# Main training
-# ------------------------------------------------------------
+# Training
 def train_baseline():
     # Hyperparameters
     BATCH_SIZE = 32

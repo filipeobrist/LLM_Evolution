@@ -12,9 +12,7 @@ import random
 # Import everything from our model library
 from jamba_model_train import *
 
-# ------------------------------------------------------------
 # Configuration
-# ------------------------------------------------------------
 CHECKPOINT_NAME = "best_model_run_7_seed_22_propor.pt"
 OUTPUT_CSV = "trained_propor_results_run_7_seed_22.csv"
 MODEL_SAVE_PATH = "trained_propor_best_run_7_seed_22.pt"
@@ -30,12 +28,10 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 
-# ------------------------------------------------------------
-# PROPOR dataset loading (now using official train/test splits)
-# ------------------------------------------------------------
+# Propor dataset
 def load_propor_dataset(tokenizer, max_length=512):
     print("Loading PROPOR FOS Classification dataset...")
-    # Load official splits
+    # Load splits
     train_ds = load_dataset("ivosimoes/PROPOR_FOS_Classification", split="train")
     test_ds = load_dataset("ivosimoes/PROPOR_FOS_Classification", split="test")
     
@@ -53,14 +49,14 @@ def load_propor_dataset(tokenizer, max_length=512):
         axis=1
     )
     
-    # Encode labels based on the train labels (to ensure same mapping)
+    # Encode labels based on the train labels
     train_labels = sorted(df_train['label'].unique())
     label_to_id = {l: i for i, l in enumerate(train_labels)}
     print(f"Label mapping: {label_to_id}")
     df_train['label_int'] = df_train['label'].map(label_to_id)
     # For test, any unseen label (should not happen) gets -1, but we'll trust the dataset
     df_test['label_int'] = df_test['label'].map(label_to_id)
-    # In case a test label is not present, we drop those rows (or handle as you prefer)
+    # In case a test label is not present, we drop those rows
     if df_test['label_int'].isna().any():
         print("Warning: Some test labels were not present in the training set. Dropping them.")
         df_test = df_test.dropna(subset=['label_int'])
@@ -111,9 +107,7 @@ def load_propor_dataset(tokenizer, max_length=512):
     print(f"Train: {len(train_dataset)}, Val: {len(val_dataset)}, Test: {len(test_dataset)}")
     return train_dataset, val_dataset, test_dataset
 
-# ------------------------------------------------------------
-# Evaluation function (unchanged)
-# ------------------------------------------------------------
+# Evaluation function
 def evaluate(model, loader, device, criterion):
     model.eval()
     all_preds, all_labels = [], []
@@ -147,9 +141,8 @@ def evaluate(model, loader, device, criterion):
     return {'acc': acc, 'prec': prec, 'rec': rec, 'f1': f1,
             'loss': avg_loss, 'lat': latency_ms}
 
-# ------------------------------------------------------------
-# Main training routine (unchanged except using the corrected splits)
-# ------------------------------------------------------------
+
+# Training
 def train_propor():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -210,7 +203,7 @@ def train_propor():
             train_loss += loss.item()
         avg_train_loss = train_loss / len(train_loader)
         
-        # Evaluate on test set (the dedicated test split)
+        # Evaluate on test set
         metrics = evaluate(model, test_loader, device, criterion)
         current_f1 = metrics['f1']
         

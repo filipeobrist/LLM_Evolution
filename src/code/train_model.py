@@ -1,26 +1,16 @@
-import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from dataclasses import dataclass
 from datasets import load_dataset
-from typing import Union
-import random
-import copy
 from transformers import AutoTokenizer, get_linear_schedule_with_warmup
-import gc
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, accuracy_score, precision_recall_fscore_support
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 import time
 
 from jamba_model_train import *
 
-# ------------------------------------------------------------
-# Demora mais ou menos ~2h30 with 4 epochs on a single gpu and batch size 32
-# ------------------------------------------------------------
+
+# It takes ~2h30 with 4 epochs on a single gpu and batch size 32
 CHECKPOINT_NAME = "best_model_run_7_seed_22_300_steps.pt"
 OUTPUT_CSV = "trained_model_results_run_7_seed_22_300_steps.csv"
 MODEL_SAVE_PATH = "trained_model_run_7_seed_22_300_steps.pt"
@@ -34,7 +24,7 @@ def evaluate(model, loader, device, criterion):
     total_loss = 0
 
     with torch.no_grad():
-        # Medição do tempo total
+        # Total Time
         torch.cuda.synchronize()
         t_inicio = time.time()
 
@@ -52,14 +42,14 @@ def evaluate(model, loader, device, criterion):
         torch.cuda.synchronize()
         t_fim = time.time()
 
-    # Tempo total em segundos
-    tempo_total_s = t_fim - t_inicio
-    n_amostras = len(all_labels)   # total de exemplos no dataset de teste
 
-    # Latência média por documento 
+    tempo_total_s = t_fim - t_inicio
+    n_amostras = len(all_labels)
+
+    # Latency
     latencia_media_ms = (tempo_total_s / n_amostras) * 1000.0
 
-    # Calcula as métricas de performance
+    # Performance
     acc = accuracy_score(all_labels, all_preds)
     prec, rec, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted')
     avg_loss = total_loss / len(loader)
@@ -72,10 +62,10 @@ def evaluate(model, loader, device, criterion):
 
 def train_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Iniciando Benchmark Final em: {device}")
+    print(f"Inicializing on: {device}")
 
-    # 1. Carregar Dataset
-    print("A carregar e tokenizar AG News...")
+    # Load Dataset
+    print("Loading AG News...")
     dataset = load_dataset("ag_news")
     tokenizer = AutoTokenizer.from_pretrained("TechxGenus/Mini-Jamba")
     def tokenize_function(examples):
@@ -85,11 +75,11 @@ def train_model():
     train_loader = DataLoader(tokenized_train, batch_size=BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(tokenized_test, batch_size=BATCH_SIZE)
 
-    # 2. Carregar checkpoint e reconstruir o modelo com o genótipo
-    print(f"A carregar checkpoint: {CHECKPOINT_NAME}")
+    # Load checkpoint genotype and state_dict
+    print(f"Loading checkpoint: {CHECKPOINT_NAME}")
     checkpoint = torch.load(CHECKPOINT_NAME, map_location=device)
     genotype = checkpoint['genotype']
-    print(f"\n GENÓTIPO DO MODELO: {genotype}")
+    print(f"\n GENOTYPE: {genotype}")
 
     config = from_pretrained("TechxGenus/Mini-Jamba")
     base_lm = JambaLM(config, genotype).to(device)
@@ -98,14 +88,14 @@ def train_model():
     # Load with strict=False to handle frozen backbone from evolution
     missing_keys, unexpected_keys = model.load_state_dict(checkpoint['state_dict'], strict=False)
     if missing_keys:
-        print(f"Aviso: {len(missing_keys)} chaves em falta (ex: {missing_keys[:5]}). Serão treinadas de raiz.")
+        print(f"Warning: {len(missing_keys)} keys missing (e.g., {missing_keys[:5]}). Will be trained from scratch.")
     if unexpected_keys:
-        print(f"Aviso: {len(unexpected_keys)} chaves inesperadas (ignoradas).")
+        print(f"Warning: {len(unexpected_keys)} unexpected keys (ignored).")
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Modelo reconstruído com {num_params:,} parâmetros.")
+    print(f"Model reconstructed with {num_params:,} parameters.")
 
-    # 3. Treino 
+    # Train
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
     total_steps = len(train_loader) * EPOCHS
     scheduler = get_linear_schedule_with_warmup(optimizer,
@@ -121,7 +111,7 @@ def train_model():
     for epoch in range(EPOCHS):
         model.train()
         train_loss = 0
-        print(f"\n--- Época {epoch+1}/{EPOCHS} ---")
+        print(f"\n--- Epoch {epoch+1}/{EPOCHS} ---")
         for batch in train_loader:
             optimizer.zero_grad()
             input_ids = batch["input_ids"].to(device)
@@ -140,10 +130,10 @@ def train_model():
 
         if current_f1 > best_f1:
             best_f1 = current_f1
-            print(f"Novo recorde de F1: {best_f1:.4f}! A guardar pesos...")
+            print(f"New F1 record: {best_f1:.4f}! Saving weights...")
             torch.save(model.state_dict(), MODEL_SAVE_PATH)
         else:
-            print(f"F1 ({current_f1:.4f}) não superou o melhor ({best_f1:.4f}).")
+            print(f"F1 ({current_f1:.4f}) did not surpass the best ({best_f1:.4f}).")
 
         epoch_data = {
             "epoch": epoch + 1,
@@ -163,10 +153,10 @@ def train_model():
 
     df_results = pd.DataFrame(history)
     df_results.to_csv(OUTPUT_CSV, index=False)
-    print(f"\nBenchmark concluído!")
-    print(f"Logs guardados em: {OUTPUT_CSV}")
-    print(f"Pesos finais guardados em: {MODEL_SAVE_PATH}")
-    print(f"Tempo total de treino: {time.time() - start_time:.2f} segundos")
+    print(f"\nBenchmark concluded!")
+    print(f"Logs saved to: {OUTPUT_CSV}")
+    print(f"Final weights saved to: {MODEL_SAVE_PATH}")
+    print(f"Total training time: {time.time() - start_time:.2f} seconds")
 
 if __name__ == "__main__":
     train_model()
