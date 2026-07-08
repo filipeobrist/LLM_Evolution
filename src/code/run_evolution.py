@@ -34,6 +34,8 @@ FINE_TUNE = True
 
 DATALOADER_BASE_SEED = 42
 
+MIN_LAYERS_GEN0 = 4
+
 BATCH_SIZE = 16
 STEPS_1 = 100
 
@@ -405,7 +407,7 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
     print(f"--- Generation 0: Initializing {pop_size} individuals ---")
     population = []
     for i in range(pop_size):
-        g = generate_random_genotype(min_layers=10) # Doesnt change the outcome
+        g = generate_random_genotype(MIN_LAYERS_GEN0) # Doesnt change the outcome
         # Train and evaluate individual
         w, s, losses = evaluate_individual(base_model.config, g, train_ds, val_ds, STEPS_1, inherited_weights=None, gen0=True, ind_id=str(i), dl_seed=gen0_seed)
         population.append({'genotype': g, 'weights': w, 'stats': s, 'losses': losses})
@@ -502,8 +504,10 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 
-SEEDS = [42, 123, 999, 2024, 7]
+# SEEDS = [42, 123, 999, 2024, 7]
 # SEEDS = [2026, 22]
+# SEEDS = [2003, 111, 222]
+SEEDS = [333, 444, 555, 777, 888]
 
 def set_seed(seed):
     random.seed(seed)
@@ -539,7 +543,7 @@ def run_thesis_experiment():
             
         # set seed
         set_seed(seed)
-        run_name = f"run_{run_idx+1}_seed_{seed}_{STEPS_1}_steps"
+        run_name = f"run_{run_idx+1+10}_seed_{seed}_{STEPS_1}_steps"
             
         # just to be sure, we clean up before each run
         gc.collect()

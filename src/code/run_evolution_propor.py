@@ -548,9 +548,10 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 
 
 
-SEEDS = [42, 123, 999, 2024, 7]
+# SEEDS = [42, 123, 999, 2024, 7]
 # SEEDS = [123, 999, 2024, 7]
-SEEDS = [2024, 7, 2026, 22]
+# SEEDS = [2024, 7, 2026, 22]
+SEEDS = [2003, 111, 222]
 
 def set_seed(seed):
     random.seed(seed)
@@ -586,7 +587,7 @@ def run_thesis_experiment():
             
         # seed set
         set_seed(seed)
-        run_name = f"run_{run_idx+1}_seed_{seed}_propor"
+        run_name = f"run_{run_idx+1+7}_seed_{seed}_propor"
             
         # just to be sure, we clean up before each run
         gc.collect()
