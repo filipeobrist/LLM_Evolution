@@ -37,7 +37,7 @@ DATALOADER_BASE_SEED = 42
 MIN_LAYERS_GEN0 = 4
 
 BATCH_SIZE = 16
-STEPS_1 = 100
+STEPS_1 = 400
 
 
 def load_agnews(tokenizer, n_train=60000, n_val=1500):
