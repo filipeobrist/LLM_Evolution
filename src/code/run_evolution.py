@@ -34,10 +34,10 @@ FINE_TUNE = True
 
 DATALOADER_BASE_SEED = 42
 
-MIN_LAYERS_GEN0 = 10
+MIN_LAYERS_GEN0 = 4
 
 BATCH_SIZE = 16
-STEPS_1 = 300
+STEPS_1 = 400
 
 
 def load_agnews(tokenizer, n_train=60000, n_val=1500):
@@ -508,7 +508,6 @@ def evolve(base_model, train_ds, val_ds, pop_size=30, generations=100, elitism=1
 # SEEDS = [2026, 22]
 # SEEDS = [2003, 111, 222]
 SEEDS = [333, 444, 555, 777, 888]
-SEEDS = [777,888]
 
 def set_seed(seed):
     random.seed(seed)
@@ -544,7 +543,7 @@ def run_thesis_experiment():
             
         # set seed
         set_seed(seed)
-        run_name = f"run_{run_idx+1+13}_seed_{seed}_{STEPS_1}_steps"
+        run_name = f"run_{run_idx+1+10}_seed_{seed}_{STEPS_1}_steps"
             
         # just to be sure, we clean up before each run
         gc.collect()
